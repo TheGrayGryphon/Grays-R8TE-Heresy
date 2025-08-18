@@ -372,7 +372,7 @@ def run_discord_bot():
             tid = find_tid(symbol, curr_trains)
             if tid != -1:
                 if curr_trains[tid].engineer.lower() == 'none':
-                    if player_crew_train(curr_trains, tid, ctx.author.mention, ctx.author.display_name, thread_id,
+                    if player_crew_train(curr_trains, tid, ctx.author.id, ctx.author.display_name, thread_id,
                                          last_world_datetime) < 0:
                         await ctx.respond(f'**UNABLE TO CREW; You are currently listed as crewing'
                                           f' [{players[ctx.author.mention].train_symbol}]**', ephemeral=True)
@@ -381,7 +381,7 @@ def run_discord_bot():
                         current_tags.append(tag_to_add)
                     if tag_to_remove in current_tags:
                         current_tags.remove(tag_to_remove)
-                    msg = f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} crewed {curr_trains[tid].symbol}'
+                    msg = f'[{curr_trains[tid].last_time_moved}] {ctx.author.display_name} crewed {curr_trains[tid].symbol}'
                     await thread.edit(applied_tags=current_tags)
                     await send_ch_msg(CH_LOG, msg)
                     r8teDB.add_event(curr_trains[tid].last_time_moved, ctx.author.display_name,
@@ -418,19 +418,19 @@ def run_discord_bot():
             return
         try:
             await ctx.respond(f'Attempting to tie down', ephemeral=True)
-            if ctx.author.mention in players:
-                tid = players[ctx.author.mention].train_id
+            if ctx.author.id in players:
+                tid = players[ctx.author.id].train_id
                 orig_engineer = curr_trains[tid].engineer
                 # Clear info from train record
                 curr_trains[tid].engineer = 'none'
                 curr_trains[tid].discord_id = None
                 curr_trains[tid].job_thread = None
-                del players[ctx.author.mention]  # Remove this player record
+                del players[ctx.author.id]  # Remove this player record
                 if tag_to_add not in current_tags:
                     current_tags.append(tag_to_add)
                 if tag_to_remove in current_tags:
                     current_tags.remove(tag_to_remove)
-                msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
+                msg = (f'[{curr_trains[tid].last_time_moved}] {ctx.author.display_name} tied down train '
                        f'{curr_trains[tid].symbol} at {location}')
                 await thread.send(msg)
                 await send_ch_msg(CH_LOG, msg)
@@ -456,7 +456,6 @@ def run_discord_bot():
         except Exception as e:
             await ctx.respond(f'[r8TE] Unexpected error: {e}', ephemeral=True)
 
-
     @bot.slash_command(name='complete', description=f"Mark a job complete")
     @option("symbol", description="Train symbol", required=True)
     @option('notes', description='completion notes', required=False)
@@ -480,21 +479,21 @@ def run_discord_bot():
             return
         try:
             await ctx.respond(f'Attempting to mark {symbol} as complete.', ephemeral=True)
-            if ctx.author.mention in players:
-                tid = players[ctx.author.mention].train_id
+            if ctx.author.id in players:
+                tid = players[ctx.author.id].train_id
                 orig_engineer = curr_trains[tid].engineer
                 # Clear info from train record
                 curr_trains[tid].engineer = 'None'
                 curr_trains[tid].discord_id = None
                 curr_trains[tid].job_thread = None
-                del players[ctx.author.mention]  # Remove this player record
+                del players[ctx.author.id]  # Remove this player record
                 if tag_to_add not in current_tags:
                     current_tags.append(tag_to_add)
                 if tag1_to_remove in current_tags:
                     current_tags.remove(tag1_to_remove)
                 if tag2_to_remove in current_tags:
                     current_tags.remove(tag2_to_remove)
-                msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} marked train '
+                msg = (f'[{curr_trains[tid].last_time_moved}] {ctx.author.display_name} marked train '
                        f'{curr_trains[tid].symbol} {COMPLETED_TAG}')
                 if notes:
                     msg += f'. Notes: {notes}'
@@ -520,10 +519,37 @@ def run_discord_bot():
         except Exception as e:
             await ctx.respond(f'[r8TE] **ERROR**: {e}', ephemeral=True)
 
+    @bot.slash_command(name="r8te_clear_job", description="Clear out a player job")
+    @option('player_id', description='Player ID', required=True)
+    async def r8te_clear_job(ctx: discord.ApplicationContext, player: discord.Member):
+        if player.id not in players:
+            await ctx.respond(f'[r8TE] **ERROR**: Unable to find {player} ({player.id}) in crewed train list')
+            return
+        tid = players[player.id].train_id
+        thread = await bot.fetch_channel(curr_trains[tid].job_thread)
+        orig_engineer = curr_trains[tid].engineer
+        # Clear info from train record
+        curr_trains[tid].engineer = 'none'
+        curr_trains[tid].discord_id = None
+        curr_trains[tid].job_thread = None
+        del players[ctx.author.id]  # Remove this player record
+        msg = (f'[{curr_trains[tid].last_time_moved}] **Admin** tied this train down: '
+               f'{curr_trains[tid].symbol} [{ctx.author.display_name}]')
+        await thread.send(msg)
+        await send_ch_msg(CH_LOG, msg)
+        # await thread.edit(applied_tags=current_tags)
 
-    @bot.slash_command(name="r8list", description="List trains")
+        if tid in watched_trains:
+            # This train has a watch on it - time to remove, and strike-thru previous alert messages
+            msg = (f' {GREEN_CIRCLE} {last_world_datetime} **ADMIN TIED DOWN**: Train {curr_trains[tid].symbol}'
+                   f' ({tid}) has been tied down by a staff/admin')
+            await strike_alert_msgs(CH_ALERT, tid, msg)
+            await asyncio.sleep(.5)
+            del watched_trains[tid]  # No longer need to watch
+
+    @bot.slash_command(name="r8te_list_trains", description="List trains")
     @option('list_type', description='type of list (ai, player, idle, stuck)', required=True)
-    async def r8list(ctx: discord.ApplicationContext, list_type: str):
+    async def r8te_list_trains(ctx: discord.ApplicationContext, list_type: str):
         msg = ''
         if list_type.lower() == 'player':
             for player in players:
