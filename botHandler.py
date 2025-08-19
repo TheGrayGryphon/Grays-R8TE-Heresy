@@ -10,7 +10,7 @@ import os
 from r8teInclude import (WORLDSAVE_PATH, AEI_PATH, DB_FILENAME, LOG_FILENAME, AI_ALERT_TIME, PLAYER_ALERT_TIME,
                          REMINDER_TIME, BOT_TOKEN, CH_LOG, CH_ALERT, CH_DETECTOR, CREWED_TAG, COMPLETED_TAG,
                          AVAILABLE_TAG, LOCATION_DB, SCAN_TIME, IGNORED_TAGS, REBOOT_TIME, RED_SQUARE, RED_EXCLAMATION,
-                         GREEN_CIRCLE, AXE, TRACK_AI_DD)
+                         GREEN_CIRCLE, AXE, TRACK_AI_DD, VERSION)
 from r8teInclude import Car, Cut, Train, Player, AeiReport, CarReport
 import r8teDB
 
@@ -22,11 +22,10 @@ intents.guilds = True  # noqa
 intents.messages = True  # noqa
 intents.message_content = True  # noqa
 
-VERSION = '11Aug25'
 SAVENAME = WORLDSAVE_PATH + '/Auto Save World.xml'
 DIESEL_ENGINE = 'US_DieselEngine'
 DISCORD_CHAR_LIMIT = 2000
-DISTANCE_JITTER = 1.0       # Difference value used to determine if a train is moving
+DISTANCE_JITTER = 1.0  # Difference value used to determine if a train is moving
 TMP_FILENAME = 'r8te_msg.txt'
 
 event_db = list()
@@ -194,7 +193,7 @@ def parseAEI(timestamp, root):
         for rail_vehicle in unitLoader.iter('AEI_Report_UnitData'):
             unit_type = rail_vehicle.find('equipmentype').text
             direction = rail_vehicle.find('direction').text
-            sequence =rail_vehicle.find('sequence').text
+            sequence = rail_vehicle.find('sequence').text
             roadname = rail_vehicle.find('roadname').text
             unitnumber = rail_vehicle.find('unitnumber').text
             isloaded = rail_vehicle.find('isloaded').text
@@ -207,9 +206,23 @@ def parseAEI(timestamp, root):
                 CarReport(unit_type, direction, sequence, roadname, unitnumber, isloaded, cargotons, hazmat, dest_tag,
                           defect, file_name))
         this_report = AeiReport(scanner_name, timestamp, train_symbol, train_speed, total_axles, total_loads,
-                                total_empties,total_tons, total_length, units)
+                                total_empties, total_tons, total_length, units)
 
     return this_report
+
+
+def duplicate_symbol(trains, symbol):
+    '''
+
+    :param trains: dict of trains
+    :param symbol: symbol to match
+    :return: number of trains in the dict with that symbol
+    '''
+    count = 0
+    for tid in trains:
+        if trains[tid].symbol.lower() == symbol.lower():
+            count += 1
+    return count
 
 
 def log_msg(msg):
@@ -358,7 +371,8 @@ def run_discord_bot():
         thread_id = ctx.channel.id
         forum_channel = thread.parent
         tag_to_add = discord.utils.find(lambda t: t.name.lower() == CREWED_TAG.lower(), forum_channel.available_tags)
-        tag_to_remove = discord.utils.find(lambda t: t.name.lower() == AVAILABLE_TAG.lower(), forum_channel.available_tags)
+        tag_to_remove = discord.utils.find(lambda t: t.name.lower() == AVAILABLE_TAG.lower(),
+                                           forum_channel.available_tags)
         if not tag_to_add or not tag_to_remove:
             await ctx.respond(f'[r8TE] **ERROR**: Tag `{CREWED_TAG}` and/or {AVAILABLE_TAG} not found in this forum.'
                               , ephemeral=True)
@@ -369,23 +383,28 @@ def run_discord_bot():
             return
         try:
             await ctx.respond(f'Attempting to crew train {symbol}', ephemeral=True)
+            nbr_of_symbols = duplicate_symbol(curr_trains, symbol)
+            if nbr_of_symbols > 1:
+                await ctx.respond(f'**UNABLE TO CREW** : Train symbol "{symbol}" '
+                                  f'found on {nbr_of_symbols} trains.', ephemeral=True)
+                return
             tid = find_tid(symbol, curr_trains)
             if tid != -1:
                 if curr_trains[tid].engineer.lower() == 'none':
                     if player_crew_train(curr_trains, tid, ctx.author.id, ctx.author.display_name, thread_id,
                                          last_world_datetime) < 0:
-                        await ctx.respond(f'**UNABLE TO CREW; You are currently listed as crewing'
+                        await ctx.respond(f'**UNABLE TO CREW** : You are currently listed as crewing'
                                           f' [{players[ctx.author.mention].train_symbol}]**', ephemeral=True)
                         return
                     if tag_to_add not in current_tags:
                         current_tags.append(tag_to_add)
                     if tag_to_remove in current_tags:
                         current_tags.remove(tag_to_remove)
-                    msg = f'[{curr_trains[tid].last_time_moved}] {ctx.author.display_name} crewed {curr_trains[tid].symbol}'
+                    msg = f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} crewed {curr_trains[tid].symbol}'
                     await thread.edit(applied_tags=current_tags)
                     await send_ch_msg(CH_LOG, msg)
                     r8teDB.add_event(curr_trains[tid].last_time_moved, ctx.author.display_name,
-                                      'CREW', symbol, event_db)
+                                     'CREW', symbol, event_db)
                     r8teDB.save_db(DB_FILENAME, event_db)
                     await thread.send(msg)
                 else:
@@ -397,7 +416,6 @@ def run_discord_bot():
             await ctx.respond('[r8TE] **ERROR**: I do not have permission to edit this thread.', ephemeral=True)
         except Exception as e:
             await ctx.respond(f'[r8TE] **ERROR**: {e}', ephemeral=True)
-
 
     @bot.slash_command(name='tie_down', description=f"Tie down a train")
     @option("location", description="Tie-down location", required=True)
@@ -430,13 +448,13 @@ def run_discord_bot():
                     current_tags.append(tag_to_add)
                 if tag_to_remove in current_tags:
                     current_tags.remove(tag_to_remove)
-                msg = (f'[{curr_trains[tid].last_time_moved}] {ctx.author.display_name} tied down train '
+                msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
                        f'{curr_trains[tid].symbol} at {location}')
                 await thread.send(msg)
                 await send_ch_msg(CH_LOG, msg)
                 await thread.edit(applied_tags=current_tags)
                 r8teDB.add_event(curr_trains[tid].last_time_moved, ctx.author.display_name,
-                                  'TIED_DOWN', curr_trains[tid].symbol, event_db)
+                                 'TIED_DOWN', curr_trains[tid].symbol, event_db)
                 r8teDB.save_db(DB_FILENAME, event_db)
                 if tid in watched_trains:
                     # This train has a watch on it - time to remove, and strike-thru previous alert messages
@@ -467,8 +485,10 @@ def run_discord_bot():
             return
         forum_channel = thread.parent
         tag_to_add = discord.utils.find(lambda t: t.name.lower() == COMPLETED_TAG.lower(), forum_channel.available_tags)
-        tag1_to_remove = discord.utils.find(lambda t: t.name.lower() == CREWED_TAG.lower(), forum_channel.available_tags)
-        tag2_to_remove = discord.utils.find(lambda t: t.name.lower() == AVAILABLE_TAG.lower(), forum_channel.available_tags)
+        tag1_to_remove = discord.utils.find(lambda t: t.name.lower() == CREWED_TAG.lower(),
+                                            forum_channel.available_tags)
+        tag2_to_remove = discord.utils.find(lambda t: t.name.lower() == AVAILABLE_TAG.lower(),
+                                            forum_channel.available_tags)
         if not tag_to_add or not tag1_to_remove or not tag2_to_remove:
             await ctx.respond(f'[r8TE] **ERROR**: Tag `{CREWED_TAG}` and/or `{AVAILABLE_TAG}` and/or {COMPLETED_TAG}'
                               f' not found in this forum.', ephemeral=True)
@@ -493,7 +513,7 @@ def run_discord_bot():
                     current_tags.remove(tag1_to_remove)
                 if tag2_to_remove in current_tags:
                     current_tags.remove(tag2_to_remove)
-                msg = (f'[{curr_trains[tid].last_time_moved}] {ctx.author.display_name} marked train '
+                msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} marked train '
                        f'{curr_trains[tid].symbol} {COMPLETED_TAG}')
                 if notes:
                     msg += f'. Notes: {notes}'
@@ -501,7 +521,7 @@ def run_discord_bot():
                 await thread.edit(applied_tags=current_tags)
                 await send_ch_msg(CH_LOG, msg)
                 r8teDB.add_event(curr_trains[tid].last_time_moved, ctx.author.display_name,
-                                  'MARKED_COMPLETE', curr_trains[tid].symbol, event_db)
+                                 'MARKED_COMPLETE', curr_trains[tid].symbol, event_db)
                 r8teDB.save_db(DB_FILENAME, event_db)
                 if tid in watched_trains:
                     # This train has a watch on it - time to remove, and strike-thru previous alert messages
@@ -533,7 +553,7 @@ def run_discord_bot():
         curr_trains[tid].discord_id = None
         curr_trains[tid].job_thread = None
         del players[ctx.author.id]  # Remove this player record
-        msg = (f'[{curr_trains[tid].last_time_moved}] **Admin** tied this train down: '
+        msg = (f'{curr_trains[tid].last_time_moved} **Admin** tied this train down: '
                f'{curr_trains[tid].symbol} [{ctx.author.display_name}]')
         await thread.send(msg)
         await send_ch_msg(CH_LOG, msg)
@@ -590,20 +610,18 @@ def run_discord_bot():
             await ctx.respond(msg, ephemeral=True)
         # await ctx.respond(msg, ephemeral=True)
 
-
-    @bot.slash_command(name='train_info', description="Display info of individual train")
+    @bot.slash_command(name='r8te_train_info', description="Display info of individual train")
     @option('tid', required=True, description='Train ID')
-    async def train_info(ctx: discord.ApplicationContext, tid: int):
+    async def r8te_train_info(ctx: discord.ApplicationContext, tid: int):
         if tid in curr_trains:
             msg = curr_trains[tid]
         else:
             msg = f'Train {tid} not found.'
         await ctx.respond(msg, ephemeral=True)
 
-
-    @bot.slash_command(name='consist_info', description="Display symbols of all cars in train")
+    @bot.slash_command(name='r8te_consist_info', description="Display symbols of all cars in train")
     @option('tid', required=True, description='Train ID')
-    async def consist_info(ctx: discord.ApplicationContext, tid: int):
+    async def r8te_consist_info(ctx: discord.ApplicationContext, tid: int):
         if tid in curr_trains:
             msg = '`'
             count = 1
@@ -621,10 +639,9 @@ def run_discord_bot():
         else:
             await ctx.respond(msg, ephemeral=True)
 
-
-    @bot.slash_command(name="check_symbol", description="Check for existence of a train symbol")
+    @bot.slash_command(name="r8te_check_symbol", description="Check for existence of a train symbol")
     @option('symbol', description='symbol', required=True)
-    async def check_symbol(ctx: discord.ApplicationContext, symbol: str):
+    async def r8te_check_symbol(ctx: discord.ApplicationContext, symbol: str):
         msg = ''
         for tid in curr_trains:
             if curr_trains[tid].symbol == symbol:
@@ -633,7 +650,6 @@ def run_discord_bot():
         if len(msg) < 1:
             msg = f'Train {symbol} not found.'
         await ctx.respond(msg, ephemeral=True)
-
 
     @tasks.loop(seconds=SCAN_TIME)
     async def scan_world_state():
@@ -673,13 +689,13 @@ def run_discord_bot():
             # Re-add players
             for player in player_updates:
                 tid = find_tid(player[2], curr_trains)
-                if tid < 0:     # Current train symbol is not found; perhaps lead loco is 'backwards' or train was removed
+                if tid < 0:  # Current train symbol is not found; perhaps lead loco is 'backwards' or train was removed
                     if player[3] in curr_trains:
                         tid = player[3]
                         msg = (f'Invalid player {player[1]} train id returned for find_tid({player[2]}) '
                                f'so resorting to archived tid of {player[3]}')
                     else:
-                        tid = -1    # Can't find this train, so prevent from trying to crew it
+                        tid = -1  # Can't find this train, so prevent from trying to crew it
                         msg = (f'Train {player[2]}[{player[3]}] not found;'
                                f' removing crew status for player {player[1]}')
                         # Send message in job thread notifying player of the problem
@@ -809,9 +825,10 @@ def run_discord_bot():
 
                         if tid in watched_trains:
                             # This train has a watch on it - time to remove, and strike-thru previous alert messages
-                            msg = (f' {GREEN_CIRCLE} {last_world_datetime} **ON THE MOVE**: Train {curr_trains[tid].symbol}'
-                                   f' ({tid}) is now on the move after'
-                                   f' {last_world_datetime - last_trains[tid].last_time_moved}.')
+                            msg = (
+                                f' {GREEN_CIRCLE} {last_world_datetime} **ON THE MOVE**: Train {curr_trains[tid].symbol}'
+                                f' ({tid}) is now on the move after'
+                                f' {last_world_datetime - last_trains[tid].last_time_moved}.')
                             await strike_alert_msgs(CH_ALERT, tid, msg)
                             await asyncio.sleep(.5)
                             del watched_trains[tid]  # No longer need to watch
@@ -828,7 +845,8 @@ def run_discord_bot():
                             nbr_player_stopped += 1
                         td = last_world_datetime - last_trains[tid].last_time_moved
                         if (curr_trains[tid].engineer.lower() == 'ai' and td > timedelta(minutes=AI_ALERT_TIME) or
-                                curr_trains[tid].engineer.lower() != 'ai' and td > timedelta(minutes=PLAYER_ALERT_TIME)):
+                                curr_trains[tid].engineer.lower() != 'ai' and td > timedelta(
+                                    minutes=PLAYER_ALERT_TIME)):
                             # The time this train has been stopped is large enough to alert
                             if tid not in watched_trains:  # First alert
                                 watched_trains[tid] = [curr_trains[tid].last_time_moved, 1]
@@ -865,8 +883,9 @@ def run_discord_bot():
                                     await asyncio.sleep(.5)
                             else:
                                 pass  # We have already notified at least once, now backing off before another notice
-                        print(f'[{curr_trains[tid].engineer}] {curr_trains[tid].symbol} ({tid}) has not moved for {td}, '
-                              f'DLC {location(curr_trains[tid].route_1, curr_trains[tid].track_1)}')
+                        print(
+                            f'[{curr_trains[tid].engineer}] {curr_trains[tid].symbol} ({tid}) has not moved for {td}, '
+                            f'DLC {location(curr_trains[tid].route_1, curr_trains[tid].track_1)}')
                         curr_trains[tid].last_time_moved = last_trains[tid].last_time_moved
                         curr_trains[tid].job_thread = last_trains[tid].job_thread
                     else:
@@ -880,16 +899,15 @@ def run_discord_bot():
             await asyncio.sleep(.5)
             print(msg)
 
-
-    @tasks.loop(seconds=SCAN_TIME*1.5)
+    @tasks.loop(seconds=SCAN_TIME * 1.5)
     async def scan_detectors():
         global detector_files
         global detector_file_time
-        global last_world_datetime      # For reporting using server time
+        global last_world_datetime  # For reporting using server time
         updated_files = list()
         updated_file_time = 0
 
-        detector_files = glob.glob(os.path.join(AEI_PATH, "*.xml"))     # List is alphabetical
+        detector_files = glob.glob(os.path.join(AEI_PATH, "*.xml"))  # List is alphabetical
         for file in detector_files:
             this_file_time = os.path.getmtime(file)
             if this_file_time > detector_file_time:
@@ -917,7 +935,7 @@ def run_discord_bot():
                 defect_msg = defect_msg[:-3]
             else:
                 defect_msg = 'None'
-            msg = (f'[{report.timestamp}] DET RPT // {report.name} // {report.symbol} [{engineer}] '
+            msg = (f'{report.timestamp} DET RPT // {report.name} // {report.symbol} [{engineer}] '
                    f'| {report.speed} mph | {report.axles} axles | Defects: {defect_msg}')
             for player in players.values():
                 if player.train_symbol.lower() in report.symbol.lower():
@@ -930,7 +948,7 @@ def run_discord_bot():
                 await send_ch_msg(CH_DETECTOR, msg)
                 await asyncio.sleep(.5)
             else:
-                log_msg(msg)    # Go ahead and write AI DD messages to log
+                log_msg(msg)  # Go ahead and write AI DD messages to log
         if len(updated_files) > 0:
             detector_file_time = updated_file_time
 
@@ -938,12 +956,11 @@ def run_discord_bot():
     async def on_ready():
         global event_db
 
-        print(f"[{datetime.now()}] {bot.user} starting r8te v{VERSION}")
+        print(f"{datetime.now()} {bot.user} starting r8te v{VERSION}")
         with open(LOG_FILENAME, 'w') as fp:
             fp.write('R8TE log started\n')
         event_db = (r8teDB.load_db(DB_FILENAME))
         scan_world_state.start()
         scan_detectors.start()
-
 
     bot.run(BOT_TOKEN)
