@@ -760,38 +760,25 @@ def run_discord_bot():
                         await asyncio.sleep(.5)
                         del watched_trains[tid]  # No longer need to watch
 
-            # Run through each player symbol and check that the symbol to tid correspondence hasn't changed
+            # Run through each player record and check that the symbol to tid correspondence hasn't changed
             # Also, populate player / job info on new train dict
             for player in players.values():
-                for train in curr_trains.values():
-                    if player.train_symbol.lower() == train.symbol.lower():
-                        if player.train_id != train.train_id:
-                            msg = f'Player {player.discord_name} train [{player.train_symbol} has changed ID '
-                            msg += f'from {player.train_id} to {train.train_id}. Updating player record.'
-                            player.train_id = train.train_id
-                            await send_ch_msg(CH_LOG, msg)
-                            await asyncio.sleep(.5)
-                        train.discord_id = player.discord_id
-                        train.engineer = player.discord_name
-                        train.job_thread = player.job_thread
+                if player.train_symbol.lower() != curr_trains[player.train_id].symbol.lower():
+                    new_tid = find_tid(player.symbol, curr_trains)
+                    if new_tid > 0:
+                        msg = f'Player {player.discord_name} train [{player.train_symbol} has changed ID '
+                        msg += f'from {player.train_id} to {new_tid}. Updating player record.'
+                        player.train_id = new_tid
                     else:
-                        for car in train.consist:
-                            if player.train_symbol.lower() == car.dest_tag.lower():
-                                msg = f'Found player train {player.discord_name} : {player.train_symbol}'
-                                msg += f' but not on lead loco - perhaps they have switched leaders(?)'
-                                await send_ch_msg(CH_LOG, msg)
-                                await asyncio.sleep(.5)
-                                if player.train_id != train.train_id:  # Verify this action #
-                                    msg = f'Changing ID of {player.discord_name} train [{player.train_symbol}'
-                                    msg += f' from {player.train_id} to {train.train_id}.'
-                                    player.train_id = train.train_id
-                                    await send_ch_msg(CH_LOG, msg)
-                                    await asyncio.sleep(.5)
-                                train.discord_id = player.discord_id
-                                train.engineer = player.discord_name
-                                train.job_thread = player.job_thread
-                    # Else what if we can't find that symbol?
+                        msg = f'**Missing player train** {player.discord_name} train [{player.train_symbol} '
+                        msg += f'no longer appears to have a TID! Leaving player record alone...'
+                    await send_ch_msg(CH_LOG, msg)
+                    await asyncio.sleep(.5)
+                curr_trains[player.train_id].discord_id = player.discord_id
+                curr_trains[player.train_id].engineer = player.discord_name
+                curr_trains[player.train_id].job_thread = player.job_thread
 
+            # Initialize summary counters
             nbr_ai_moving = 0
             nbr_player_moving = 0
             nbr_ai_stopped = 0
