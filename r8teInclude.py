@@ -1,6 +1,6 @@
 import configparser
 
-VERSION = '20Aug25'
+VERSION = '21Aug25'
 CONFIG_FILE = 'r8te.cfg'
 
 
@@ -203,6 +203,19 @@ class AeiReport:
             # msg += f'{unit}\n----\n'
         if no_defect:
             msg += 'None\n'
+        return msg
+
+
+class Job:
+    def __init__(self, name, crew):
+        self.name = name
+        self.crew = crew
+
+    def __str__(self):
+        msg = f'{self.name}, crewed by:'
+        for player in self.crew:
+            msg += f' {player},'
+        msg = msg[:-1]
         return msg
 
 

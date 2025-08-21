@@ -11,7 +11,7 @@ from r8teInclude import (WORLDSAVE_PATH, AEI_PATH, DB_FILENAME, LOG_FILENAME, AI
                          REMINDER_TIME, BOT_TOKEN, CH_LOG, CH_ALERT, CH_DETECTOR, CREWED_TAG, COMPLETED_TAG,
                          AVAILABLE_TAG, LOCATION_DB, SCAN_TIME, IGNORED_TAGS, REBOOT_TIME, RED_SQUARE, RED_EXCLAMATION,
                          GREEN_CIRCLE, AXE, TRACK_AI_DD, VERSION)
-from r8teInclude import Car, Cut, Train, Player, AeiReport, CarReport
+from r8teInclude import Car, Cut, Train, Player, AeiReport, CarReport, Job
 import r8teDB
 
 DEBUG = True
@@ -92,6 +92,7 @@ watched_trains = dict()  # Dict of trains which are stalled/stuck
 players = dict()  # Dict of player controlled trains
 alert_messages = defaultdict(list)  # Dict of messages sent to alert channel
 detector_reports = defaultdict(list)
+working_jobs = dict()
 detector_files = list()
 detector_file_time: float = 0.0
 
@@ -366,9 +367,11 @@ def run_discord_bot():
     # NOTE: This command must be executed within a forum thread
     async def crew(ctx: discord.ApplicationContext, symbol: str):
         global last_world_datetime
+        global working_jobs
 
         thread = ctx.channel
         thread_id = ctx.channel.id
+        thread_name = ctx.channel.name
         forum_channel = thread.parent
         tag_to_add = discord.utils.find(lambda t: t.name.lower() == CREWED_TAG.lower(), forum_channel.available_tags)
         tag_to_remove = discord.utils.find(lambda t: t.name.lower() == AVAILABLE_TAG.lower(),
@@ -379,8 +382,9 @@ def run_discord_bot():
             return
         current_tags = thread.applied_tags or []
         if tag_to_add in current_tags:
-            await ctx.respond(f'This job is already marked `{tag_to_add.name}` - unable to crew.', ephemeral=True)
-            return
+            if not any(tag in symbol.lower() for tag in IGNORED_TAGS):
+                await ctx.respond(f'This job is already marked `{tag_to_add.name}` - unable to crew.', ephemeral=True)
+                return
         try:
             await ctx.respond(f'Attempting to crew train {symbol}', ephemeral=True)
             nbr_of_symbols = duplicate_symbol(curr_trains, symbol)
@@ -400,7 +404,19 @@ def run_discord_bot():
                         current_tags.append(tag_to_add)
                     if tag_to_remove in current_tags:
                         current_tags.remove(tag_to_remove)
-                    msg = f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} crewed {curr_trains[tid].symbol}'
+
+                    try:
+                        working_jobs[thread_id].crew.append(ctx.author.display_name)
+                        print(f'Added {ctx.author.display_name} to job {working_jobs[thread_id].name}')
+                    except KeyError:
+                        working_jobs[thread_id] = Job(thread_name, [ctx.author.display_name])
+                        print(f'Created job {working_jobs[thread_id].name} being crewed by {ctx.author.display_name}')
+
+                    msg = f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} '
+                    if len(working_jobs[thread_id].crew) > 1:
+                        msg += f'crewed {curr_trains[tid].symbol}, assisting on job: *{thread_name}*'
+                    else:
+                        msg += f'crewed {curr_trains[tid].symbol}, working job: *{thread_name}*'
                     await thread.edit(applied_tags=current_tags)
                     await send_ch_msg(CH_LOG, msg)
                     r8teDB.add_event(curr_trains[tid].last_time_moved, ctx.author.display_name,
@@ -421,6 +437,8 @@ def run_discord_bot():
     @option("location", description="Tie-down location", required=True)
     async def tie_down(ctx: discord.ApplicationContext, location: str):
         thread = ctx.channel
+        thread_id = ctx.channel.id
+
         if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
             await ctx.respond('This command must be used inside a forum thread.', ephemeral=True)
             return
@@ -444,12 +462,24 @@ def run_discord_bot():
                 curr_trains[tid].discord_id = None
                 curr_trains[tid].job_thread = None
                 del players[ctx.author.id]  # Remove this player record
-                if tag_to_add not in current_tags:
-                    current_tags.append(tag_to_add)
-                if tag_to_remove in current_tags:
-                    current_tags.remove(tag_to_remove)
-                msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
-                       f'{curr_trains[tid].symbol} at {location}')
+                # Check to see if this is a multi-crewed job
+                if len(working_jobs[thread_id].crew) < 2:
+                    # Single crew train
+                    if tag_to_add not in current_tags:
+                        current_tags.append(tag_to_add)
+                    if tag_to_remove in current_tags:
+                        current_tags.remove(tag_to_remove)
+                    msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
+                           f'{curr_trains[tid].symbol} at {location}')
+                    del working_jobs[thread_id]
+                else:
+                    # Multi-crew train
+                    working_jobs[thread_id].crew.remove(ctx.author.display_name)
+                    msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
+                           f'{curr_trains[tid].symbol} at {location}, job still being worked by:')
+                    for player in working_jobs[thread_id].crew:
+                        msg += f' {player},'
+                    msg = msg[:-1]
                 await thread.send(msg)
                 await send_ch_msg(CH_LOG, msg)
                 await thread.edit(applied_tags=current_tags)
@@ -480,6 +510,8 @@ def run_discord_bot():
     # NOTE: This command must be executed within a forum thread
     async def complete(ctx: discord.ApplicationContext, symbol: str, notes: str):
         thread = ctx.channel
+        thread_id = ctx.channel.id
+
         if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
             await ctx.respond('This command must be used inside a forum thread.', ephemeral=True)
             return
@@ -501,20 +533,38 @@ def run_discord_bot():
             await ctx.respond(f'Attempting to mark {symbol} as complete.', ephemeral=True)
             if ctx.author.id in players:
                 tid = players[ctx.author.id].train_id
+                if curr_trains[tid].symbol.lower() != symbol.lower():
+                    await ctx.respond(f'Train symbol {symbol} does not match the current train ', ephemeral=True)
+                    return
                 orig_engineer = curr_trains[tid].engineer
                 # Clear info from train record
                 curr_trains[tid].engineer = 'None'
                 curr_trains[tid].discord_id = None
                 curr_trains[tid].job_thread = None
                 del players[ctx.author.id]  # Remove this player record
-                if tag_to_add not in current_tags:
-                    current_tags.append(tag_to_add)
-                if tag1_to_remove in current_tags:
-                    current_tags.remove(tag1_to_remove)
-                if tag2_to_remove in current_tags:
-                    current_tags.remove(tag2_to_remove)
-                msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} marked train '
-                       f'{curr_trains[tid].symbol} {COMPLETED_TAG}')
+                # Check to see if this is a multi-crewed job
+                if len(working_jobs[thread_id].crew) < 2:
+                    # Single crew train
+                    if tag_to_add not in current_tags:
+                        current_tags.append(tag_to_add)
+                    if tag1_to_remove in current_tags:
+                        current_tags.remove(tag1_to_remove)
+                    if tag2_to_remove in current_tags:
+                        current_tags.remove(tag2_to_remove)
+                    msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
+                           f'{curr_trains[tid].symbol}, and marked job '
+                           f'*{working_jobs[thread_id].name}* {COMPLETED_TAG}')
+                    del working_jobs[thread_id]
+
+                else:
+                    # Multi-crew train
+                    working_jobs[thread_id].crew.remove(ctx.author.display_name)  # Remove player from job list
+                    msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
+                           f'{curr_trains[tid].symbol}. Job *{working_jobs[thread_id].name}* still being worked by:')
+                    for player in working_jobs[thread_id].crew:
+                        msg += f' {player},'
+                    msg = msg[:-1]
+
                 if notes:
                     msg += f'. Notes: {notes}'
                 await thread.send(msg)
@@ -539,9 +589,9 @@ def run_discord_bot():
         except Exception as e:
             await ctx.respond(f'[r8TE] **ERROR**: {e}', ephemeral=True)
 
-    @bot.slash_command(name="r8te_clear_job", description="Clear out a player job")
+    @bot.slash_command(name="r8te_clear_crew", description="Remove player from crew status")
     @option('player_id', description='Player ID', required=True)
-    async def r8te_clear_job(ctx: discord.ApplicationContext, player: discord.Member):
+    async def r8te_clear_crew(ctx: discord.ApplicationContext, player: discord.Member):
         if player.id not in players:
             await ctx.respond(f'[r8TE] **ERROR**: Unable to find {player} ({player.id}) in crewed train list')
             return
@@ -552,11 +602,17 @@ def run_discord_bot():
         curr_trains[tid].engineer = 'none'
         curr_trains[tid].discord_id = None
         curr_trains[tid].job_thread = None
-        del players[ctx.author.id]  # Remove this player record
+        del players[player.id]  # Remove this player record
+        if len(working_jobs[thread.id].crew) > 1:
+            working_jobs[thread.id].crew.remove(player.display_name)    # Remove player from list of crew
+        else:
+            del working_jobs[thread.id]  # Remove job record
         msg = (f'{curr_trains[tid].last_time_moved} **Admin** tied this train down: '
-               f'{curr_trains[tid].symbol} [{ctx.author.display_name}]')
+               f'{curr_trains[tid].symbol} [{orig_engineer}]')
         await thread.send(msg)
         await send_ch_msg(CH_LOG, msg)
+        await ctx.respond(msg, ephemeral=True)
+        await asyncio.sleep(.5)
         # await thread.edit(applied_tags=current_tags)
 
         if tid in watched_trains:
@@ -566,6 +622,7 @@ def run_discord_bot():
             await strike_alert_msgs(CH_ALERT, tid, msg)
             await asyncio.sleep(.5)
             del watched_trains[tid]  # No longer need to watch
+        return
 
     @bot.slash_command(name="r8te_list_trains", description="List trains")
     @option('list_type', description='type of list (ai, player, idle, stuck)', required=True)
@@ -617,6 +674,18 @@ def run_discord_bot():
             msg = curr_trains[tid]
         else:
             msg = f'Train {tid} not found.'
+        await ctx.respond(msg, ephemeral=True)
+
+    @bot.slash_command(name='r8te_list_jobs', description="Display list of jobs being worked")
+    async def r8te_list_jobs(ctx: discord.ApplicationContext):
+        global working_jobs
+
+        msg = ''
+        if len(working_jobs) == 0:
+            msg = f'No jobs being worked.'
+        else:
+            for job in working_jobs.values():
+                msg += str(job)
         await ctx.respond(msg, ephemeral=True)
 
     @bot.slash_command(name='r8te_consist_info', description="Display symbols of all cars in train")
@@ -946,6 +1015,16 @@ def run_discord_bot():
         print(f"{datetime.now()} {bot.user} starting r8te v{VERSION}")
         with open(LOG_FILENAME, 'w') as fp:
             fp.write('R8TE log started\n')
+
+        # for guild in bot.guilds:
+        #     for channel in guild.text_channels + guild.forum_channels:
+        #         threads = channel.threads
+        #         for thread in threads:
+        #             print(f'Thread found: {channel.name} : {thread.name} ({thread.id})')
+        #             print(f'Content:')
+        #             async for message in thread.history(limit=1):
+        #                 print(message.content)
+
         event_db = (r8teDB.load_db(DB_FILENAME))
         scan_world_state.start()
         scan_detectors.start()
