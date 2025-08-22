@@ -684,8 +684,11 @@ def run_discord_bot():
         if len(working_jobs) == 0:
             msg = f'No jobs being worked.'
         else:
+            i = 1
             for job in working_jobs.values():
-                msg += str(job)
+                msg += f'{i} : {str(job)}\n'
+                i += 1
+            msg = msg[:-1]
         await ctx.respond(msg, ephemeral=True)
 
     @bot.slash_command(name='r8te_consist_info', description="Display symbols of all cars in train")
