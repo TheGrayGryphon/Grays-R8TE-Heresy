@@ -825,25 +825,40 @@ def run_discord_bot():
                     await send_ch_msg(CH_LOG, msg)
                     await asyncio.sleep(.5)
                     print(msg)
+                    # Check if deleted train is in the watched train list
                     if tid in watched_trains:
                         msg = (f' {AXE} {last_world_datetime} **TRAIN DELETED**:'
                                f' [{last_trains[tid].engineer}] {last_trains[tid].symbol} ({tid}) has been deleted.')
                         await strike_alert_msgs(CH_ALERT, tid, msg)
                         await asyncio.sleep(.5)
                         del watched_trains[tid]  # No longer need to watch
+                    # Check if deleted train is in the player list
+                    players_deleted = list()
+                    for player in players:
+                        if players[player].train_id == tid:
+                            players_deleted.append(player)
+                            msg = (f' {last_world_datetime} **TRAIN DELETED**: [{last_trains[tid].engineer}] '
+                                   f'{last_trains[tid].symbol} ({tid}) has been deleted. \n'
+                                   f'*Manually re-tagging host may be necessary* (contact staff if so).')
+                            forum_thread = await bot.fetch_channel(players[player].job_thread)
+                            await send_ch_msg(forum_thread, msg)
+                            await asyncio.sleep(.5)
+                    for player in players_deleted:
+                        del players[player]
 
             # Run through each player record and check that the symbol to tid correspondence hasn't changed
             # Also, populate player / job info on new train dict
             for player in players.values():
                 if player.train_symbol.lower() != curr_trains[player.train_id].symbol.lower():
-                    new_tid = find_tid(player.symbol, curr_trains)
+                    new_tid = find_tid(player.train_symbol, curr_trains)
                     if new_tid > 0:
-                        msg = f'Player {player.discord_name} train [{player.train_symbol} has changed ID '
+                        msg = f'Player {player.discord_name} train [{player.train_symbol}] has changed ID '
                         msg += f'from {player.train_id} to {new_tid}. Updating player record.'
                         player.train_id = new_tid
                     else:
-                        msg = f'**Missing player train** {player.discord_name} train [{player.train_symbol} '
-                        msg += f'no longer appears to have a TID! Leaving player record alone...'
+                        msg = f'**Missing player train** {player.discord_name} train [{player.train_symbol}] '
+                        msg += (f'no longer has a valid TID, which may indicate a leader change.'
+                                f' Leaving player record alone.')
                     await send_ch_msg(CH_LOG, msg)
                     await asyncio.sleep(.5)
                 curr_trains[player.train_id].discord_id = player.discord_id
