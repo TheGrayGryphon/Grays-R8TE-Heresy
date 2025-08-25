@@ -407,10 +407,8 @@ def run_discord_bot():
 
                     try:
                         working_jobs[thread_id].crew.append(ctx.author.display_name)
-                        print(f'Added {ctx.author.display_name} to job {working_jobs[thread_id].name}')
                     except KeyError:
                         working_jobs[thread_id] = Job(thread_name, [ctx.author.display_name])
-                        print(f'Created job {working_jobs[thread_id].name} being crewed by {ctx.author.display_name}')
 
                     msg = f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} '
                     if len(working_jobs[thread_id].crew) > 1:
@@ -604,7 +602,7 @@ def run_discord_bot():
         curr_trains[tid].job_thread = None
         del players[player.id]  # Remove this player record
         if len(working_jobs[thread.id].crew) > 1:
-            working_jobs[thread.id].crew.remove(player.display_name)    # Remove player from list of crew
+            working_jobs[thread.id].crew.remove(player.display_name)  # Remove player from list of crew
         else:
             del working_jobs[thread.id]  # Remove job record
         msg = (f'{curr_trains[tid].last_time_moved} **Admin** tied this train down: '
@@ -748,7 +746,7 @@ def run_discord_bot():
             for player in players.values():
                 player_updates.append([player.discord_id, player.discord_name, player.train_symbol,
                                        player.train_id, player.job_thread])
-            msg += f'\nFound {len(player_updates)} players crewing trains - repopulating their info:'
+            msg += f'\nFound {len(player_updates)} players crewing trains.'
             for player in player_updates:
                 msg += f'\n{player[1]} : {player[2]} [{player[3]}]'
             print(msg)
@@ -834,17 +832,27 @@ def run_discord_bot():
                         del watched_trains[tid]  # No longer need to watch
                     # Check if deleted train is in the player list
                     players_deleted = list()
+                    jobs_deleted = list()
                     for player in players:
                         if players[player].train_id == tid:
                             players_deleted.append(player)
+                            # Find job associated with this player
+                            for job in working_jobs:
+                                for name in working_jobs[job].crew:
+                                    if name == players[player].discord_name:
+                                        working_jobs[job].crew.remove(name)
+                                if len(working_jobs[job].crew) == 0:
+                                    jobs_deleted.append(job)
                             msg = (f' {last_world_datetime} **TRAIN DELETED**: [{last_trains[tid].engineer}] '
                                    f'{last_trains[tid].symbol} ({tid}) has been deleted. \n'
-                                   f'*Manually re-tagging host may be necessary* (contact staff if so).')
+                                   f'*Manually re-tagging post may be necessary* (contact staff if so).')
                             forum_thread = await bot.fetch_channel(players[player].job_thread)
                             await send_ch_msg(forum_thread, msg)
                             await asyncio.sleep(.5)
                     for player in players_deleted:
                         del players[player]
+                    for job in jobs_deleted:
+                        del working_jobs[job]
 
             # Run through each player record and check that the symbol to tid correspondence hasn't changed
             # Also, populate player / job info on new train dict
