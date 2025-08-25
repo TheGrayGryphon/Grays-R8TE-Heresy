@@ -1,6 +1,6 @@
 import configparser
 
-VERSION = ('23Aug25')
+VERSION = ('25Aug25')
 CONFIG_FILE = 'r8te.cfg'
 
 
@@ -148,6 +148,9 @@ class Train:
 
 
 class Player:
+
+    __slots__ = ('discord_id', 'discord_name', 'job_thread', 'train_symbol', 'train_id', 'start_time')
+
     def __init__(self, discord_id, discord_name, job_thread, train_symbol, train_id, start_time):
         self.discord_id = discord_id
         self.discord_name = discord_name
@@ -161,6 +164,9 @@ class Player:
                    f'Train symbol: {self.train_symbol}\nTrain ID: {self.train_id}\nStart time: {self.start_time}')
 
 class CarReport:
+
+    __slots__ = ('type', 'dir', 'seq', 'road', 'nbr', 'loaded', 'wt', 'hazmat', 'tag', 'defect', 'filename')
+
     def __init__(self, type, dir, seq, road, nbr, loaded, wt, hazmat, tag, defect, filename):
         self.type = type
         self.dir = dir
@@ -180,6 +186,9 @@ class CarReport:
         return msg
 
 class AeiReport:
+
+    __slots__ = ('name', 'timestamp', 'symbol', 'speed', 'axles', 'loads', 'empties', 'tons', 'length', 'units')
+
     def __init__(self, name, timestamp, symbol, speed, axles, loads, empties, tons, length, units):
         self.name = name
         self.timestamp = timestamp
@@ -207,6 +216,9 @@ class AeiReport:
 
 
 class Job:
+
+    __slots__ = ('name', 'crew')
+
     def __init__(self, name, crew):
         self.name = name
         self.crew = crew
