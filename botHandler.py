@@ -362,6 +362,28 @@ async def strike_alert_msgs(target_channel, tid=None, update_message=None):
 
 
 def run_discord_bot():
+    @bot.event
+    async def on_application_command(ctx: discord.ApplicationContext):
+        """Runs whenever a slash command is invoked (before execution)."""
+        global last_world_datetime
+
+        command_name = ctx.command.name
+        options = ctx.selected_options or {}
+
+        if isinstance(options, list):
+            # Pycord sometimes returns a list of dicts like [{'name': 'arg1', 'value': 'foo'}]
+            normalized = {opt["name"]: opt["value"] for opt in options}
+        elif isinstance(options, dict):
+            normalized = options
+        else:
+            normalized = {}
+
+        msg = f'{last_world_datetime} {ctx.author} executed `/{command_name}'
+        if len(normalized.keys()) > 0:
+            msg += f' {", ".join(normalized.values())}'
+        msg += f'` in channel {ctx.channel}   :eyes:'
+        await send_ch_msg(CH_LOG, msg)
+
     @bot.slash_command(name='crew', description=f"Crew a train")
     @option("symbol", description="Train symbol", required=True)
     # NOTE: This command must be executed within a forum thread
@@ -727,7 +749,8 @@ def run_discord_bot():
         global last_worlds_save_modified_time  # designated global to keep track between calls
 
         # Check for initial startup
-        if len(curr_trains) == 0:  # No trains means we need to read initial state
+        if not last_world_datetime:
+        #if len(curr_trains) == 0:  # No trains means we need to read initial state
             last_worlds_save_modified_time = os.stat(SAVENAME).st_mtime  # Time
             last_world_datetime = update_world_state(curr_trains)
             msg = (f'{last_world_datetime} **--> r8te ({VERSION}) INITIALIZING NEW WORLD STATE <--** '
@@ -784,7 +807,6 @@ def run_discord_bot():
                             await strike_alert_msgs(CH_ALERT, player[3], remove_msg)
                             await asyncio.sleep(.5)
                             del watched_trains[player[3]]  # No longer need to watch
-                    print(msg)
                     await send_ch_msg(CH_LOG, msg)
                     await asyncio.sleep(.5)
                 if tid > 0:
@@ -822,7 +844,6 @@ def run_discord_bot():
                     msg = f'{last_world_datetime} Train removed: {last_trains[tid].symbol} [{eng_name}] ({tid})'
                     await send_ch_msg(CH_LOG, msg)
                     await asyncio.sleep(.5)
-                    print(msg)
                     # Check if deleted train is in the watched train list
                     if tid in watched_trains:
                         msg = (f' {AXE} {last_world_datetime} **TRAIN DELETED**:'
@@ -888,7 +909,6 @@ def run_discord_bot():
                     msg = f'{last_world_datetime} Train spawned: {curr_trains[tid].symbol} [{eng_name}] ({tid})'
                     await send_ch_msg(CH_LOG, msg)
                     await asyncio.sleep(.5)
-                    print(msg)
 
                 # Check for moving AI or player trains
                 elif (curr_trains[tid].engineer.lower() != 'none' and not  # Ignore static and special tags
@@ -965,9 +985,6 @@ def run_discord_bot():
                                     await asyncio.sleep(.5)
                             else:
                                 pass  # We have already notified at least once, now backing off before another notice
-                        print(
-                            f'[{curr_trains[tid].engineer}] {curr_trains[tid].symbol} ({tid}) has not moved for {td}, '
-                            f'DLC {location(curr_trains[tid].route_1, curr_trains[tid].track_1)}')
                         curr_trains[tid].last_time_moved = last_trains[tid].last_time_moved
                         curr_trains[tid].job_thread = last_trains[tid].job_thread
                     else:
@@ -979,7 +996,6 @@ def run_discord_bot():
 
             await send_ch_msg(CH_LOG, msg)
             await asyncio.sleep(.5)
-            print(msg)
 
     @tasks.loop(seconds=SCAN_TIME * 1.5)
     async def scan_detectors():
@@ -1037,20 +1053,13 @@ def run_discord_bot():
     @bot.event
     async def on_ready():
         global event_db
+        global last_world_datetime
+
+        last_world_datetime = None
 
         print(f"{datetime.now()} {bot.user} starting r8te v{VERSION}")
         with open(LOG_FILENAME, 'w') as fp:
             fp.write('R8TE log started\n')
-
-        # for guild in bot.guilds:
-        #     for channel in guild.text_channels + guild.forum_channels:
-        #         threads = channel.threads
-        #         for thread in threads:
-        #             print(f'Thread found: {channel.name} : {thread.name} ({thread.id})')
-        #             print(f'Content:')
-        #             async for message in thread.history(limit=1):
-        #                 print(message.content)
-
         event_db = (r8teDB.load_db(DB_FILENAME))
         scan_world_state.start()
         scan_detectors.start()
