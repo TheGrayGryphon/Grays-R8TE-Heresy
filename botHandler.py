@@ -749,8 +749,7 @@ def run_discord_bot():
         global last_worlds_save_modified_time  # designated global to keep track between calls
 
         # Check for initial startup
-        if not last_world_datetime:
-        #if len(curr_trains) == 0:  # No trains means we need to read initial state
+        if not last_world_datetime: # First time through - populate the world from nothing
             last_worlds_save_modified_time = os.stat(SAVENAME).st_mtime  # Time
             last_world_datetime = update_world_state(curr_trains)
             msg = (f'{last_world_datetime} **--> r8te ({VERSION}) INITIALIZING NEW WORLD STATE <--** '
@@ -1055,7 +1054,7 @@ def run_discord_bot():
         global event_db
         global last_world_datetime
 
-        last_world_datetime = None
+        last_world_datetime = None  # Set to None to indicate first time through
 
         print(f"{datetime.now()} {bot.user} starting r8te v{VERSION}")
         with open(LOG_FILENAME, 'w') as fp:
