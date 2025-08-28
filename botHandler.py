@@ -481,7 +481,9 @@ def run_discord_bot():
                 curr_trains[tid].engineer = 'none'
                 curr_trains[tid].discord_id = None
                 curr_trains[tid].job_thread = None
+                start_time = players[ctx.author.id].start_time
                 del players[ctx.author.id]  # Remove this player record
+                time_worked = round((last_world_datetime - start_time).total_seconds() / 3600, 1)
                 # Check to see if this is a multi-crewed job
                 if len(working_jobs[thread_id].crew) < 2:
                     # Single crew train
@@ -490,13 +492,14 @@ def run_discord_bot():
                     if tag_to_remove in current_tags:
                         current_tags.remove(tag_to_remove)
                     msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
-                           f'{curr_trains[tid].symbol} at {location}')
+                           f'{curr_trains[tid].symbol} at {location}\nTime worked: {time_worked} hours.')
                     del working_jobs[thread_id]
                 else:
                     # Multi-crew train
                     working_jobs[thread_id].crew.remove(ctx.author.display_name)
                     msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
-                           f'{curr_trains[tid].symbol} at {location}, job still being worked by:')
+                           f'{curr_trains[tid].symbol} at {location}\nTime worked: {time_worked} hours.\n'
+                           f'Job *{working_jobs[thread_id].name}* still being worked by:')
                     for player in working_jobs[thread_id].crew:
                         msg += f' {player},'
                     msg = msg[:-1]
@@ -561,7 +564,9 @@ def run_discord_bot():
                 curr_trains[tid].engineer = 'None'
                 curr_trains[tid].discord_id = None
                 curr_trains[tid].job_thread = None
+                start_time = players[ctx.author.id].start_time
                 del players[ctx.author.id]  # Remove this player record
+                time_worked = round((last_world_datetime - start_time).total_seconds() / 3600, 1)
                 # Check to see if this is a multi-crewed job
                 if len(working_jobs[thread_id].crew) < 2:
                     # Single crew train
@@ -573,14 +578,16 @@ def run_discord_bot():
                         current_tags.remove(tag2_to_remove)
                     msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
                            f'{curr_trains[tid].symbol}, and marked job '
-                           f'*{working_jobs[thread_id].name}* {COMPLETED_TAG}')
+                           f'*{working_jobs[thread_id].name}* {COMPLETED_TAG}\n'
+                           f'Time worked: {time_worked} hours.')
                     del working_jobs[thread_id]
 
                 else:
                     # Multi-crew train
                     working_jobs[thread_id].crew.remove(ctx.author.display_name)  # Remove player from job list
                     msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
-                           f'{curr_trains[tid].symbol}. Job *{working_jobs[thread_id].name}* still being worked by:')
+                           f'{curr_trains[tid].symbol} at {location}\nTime worked: {time_worked} hours.\n'
+                           f'Job *{working_jobs[thread_id].name}* still being worked by:')
                     for player in working_jobs[thread_id].crew:
                         msg += f' {player},'
                     msg = msg[:-1]
