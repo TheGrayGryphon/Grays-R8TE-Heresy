@@ -380,8 +380,8 @@ def run_discord_bot():
 
         msg = f'{last_world_datetime} {ctx.author} executed `/{command_name}'
         if len(normalized.keys()) > 0:
-            msg += f' {", ".join(normalized.values())}'
-        msg += f'` in channel {ctx.channel}   :eyes:'
+            msg += f' {", ".join(str(v) for v in normalized.values())}'
+        msg += f'` in channel *{ctx.channel}*   :eyes:'
         await send_ch_msg(CH_LOG, msg)
 
     @bot.slash_command(name='crew', description=f"Crew a train")
