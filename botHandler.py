@@ -528,12 +528,12 @@ def run_discord_bot():
             await ctx.respond(f'[r8TE] Unexpected error: {e}', ephemeral=True)
 
     @bot.slash_command(name='complete', description=f"Mark a job complete")
-    @option("symbol", description="Train symbol", required=True)
     @option('notes', description='completion notes', required=False)
     # NOTE: This command must be executed within a forum thread
-    async def complete(ctx: discord.ApplicationContext, symbol: str, notes: str):
+    async def complete(ctx: discord.ApplicationContext, notes: str):
         thread = ctx.channel
         thread_id = ctx.channel.id
+        embed_msg = None
 
         if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
             await ctx.respond('This command must be used inside a forum thread.', ephemeral=True)
@@ -553,12 +553,9 @@ def run_discord_bot():
             await ctx.respond(f'This job is already marked `{tag_to_add.name}` - unable to change.', ephemeral=True)
             return
         try:
-            await ctx.respond(f'Attempting to mark {symbol} as complete.', ephemeral=True)
+            await ctx.respond(f'Attempting to mark *{working_jobs[thread_id].name}* as complete.', ephemeral=True)
             if ctx.author.id in players:
                 tid = players[ctx.author.id].train_id
-                if curr_trains[tid].symbol.lower() != symbol.lower():
-                    await ctx.respond(f'Train symbol {symbol} does not match the current train ', ephemeral=True)
-                    return
                 orig_engineer = curr_trains[tid].engineer
                 # Clear info from train record
                 curr_trains[tid].engineer = 'None'
@@ -578,8 +575,12 @@ def run_discord_bot():
                         current_tags.remove(tag2_to_remove)
                     msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
                            f'{curr_trains[tid].symbol}, and marked job '
-                           f'*{working_jobs[thread_id].name}* {COMPLETED_TAG}\n'
-                           f'Time worked: {time_worked} hours.')
+                           f'*{working_jobs[thread_id].name}* `{COMPLETED_TAG}`')
+                    embed_msg = discord.Embed(title='WORK CREDIT RECORD', color=discord.Color.orange())
+                    embed_msg.add_field(name='__Employee__', value=str(ctx.author.display_name), inline=False)
+                    embed_msg.add_field(name='__Job__', value=str(working_jobs[thread_id].name), inline=False)
+                    embed_msg.add_field(name='__Hours logged__', value=str(time_worked), inline=False)
+
                     del working_jobs[thread_id]
 
                 else:
@@ -597,6 +598,7 @@ def run_discord_bot():
                 await thread.send(msg)
                 await thread.edit(applied_tags=current_tags)
                 await send_ch_msg(CH_LOG, msg)
+                await thread.send(embed=embed_msg)
                 r8teDB.add_event(curr_trains[tid].last_time_moved, ctx.author.display_name,
                                  'MARKED_COMPLETE', curr_trains[tid].symbol, event_db)
                 r8teDB.save_db(DB_FILENAME, event_db)
