@@ -231,6 +231,18 @@ class Job:
         return msg
 
 
+class DeletedTrainWatch:
+
+    __slots__ = ('train_id', 'delete_time', 'train_symbol', 'player_id', 'job_id')
+
+    def __init__(self, train_id, delete_time, train_symbol, player_id, job_id):
+        self.train_id = train_id
+        self.delete_time = delete_time
+        self.train_symbol = train_symbol
+        self.player_id = player_id
+        self.job_id = job_id
+
+
 config = configparser.ConfigParser()
 if len(config.read(CONFIG_FILE)) == 0:
     print(f'Error in loading configuration file "{CONFIG_FILE}" - does it exist? Is it empty?')

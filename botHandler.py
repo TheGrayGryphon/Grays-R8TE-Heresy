@@ -11,7 +11,7 @@ from r8teInclude import (WORLDSAVE_PATH, AEI_PATH, DB_FILENAME, LOG_FILENAME, AI
                          REMINDER_TIME, BOT_TOKEN, CH_LOG, CH_ALERT, CH_DETECTOR, CREWED_TAG, COMPLETED_TAG,
                          AVAILABLE_TAG, LOCATION_DB, SCAN_TIME, IGNORED_TAGS, REBOOT_TIME, RED_SQUARE, RED_EXCLAMATION,
                          GREEN_CIRCLE, AXE, TRACK_AI_DD, VERSION)
-from r8teInclude import Car, Cut, Train, Player, AeiReport, CarReport, Job
+from r8teInclude import Car, Cut, Train, Player, AeiReport, CarReport, Job, DeletedTrainWatch
 import r8teDB
 
 DEBUG = True
@@ -92,6 +92,7 @@ watched_trains = dict()  # Dict of trains which are stalled/stuck
 players = dict()  # Dict of player controlled trains
 alert_messages = defaultdict(list)  # Dict of messages sent to alert channel
 detector_reports = defaultdict(list)
+deleted_player_trains = defaultdict(list)
 working_jobs = dict()
 detector_files = list()
 detector_file_time: float = 0.0
@@ -758,7 +759,7 @@ def run_discord_bot():
         global last_worlds_save_modified_time  # designated global to keep track between calls
 
         # Check for initial startup
-        if not last_world_datetime: # First time through - populate the world from nothing
+        if not last_world_datetime:  # First time through - populate the world from nothing
             last_worlds_save_modified_time = os.stat(SAVENAME).st_mtime  # Time
             last_world_datetime = update_world_state(curr_trains)
             msg = (f'{last_world_datetime} **--> r8te ({VERSION}) INITIALIZING NEW WORLD STATE <--** '
@@ -860,6 +861,19 @@ def run_discord_bot():
                         await asyncio.sleep(.5)
                         del watched_trains[tid]  # No longer need to watch
                     # Check if deleted train is in the player list
+                    # Here we want to note the time the train was deleted. Another section of code will handle the
+                    #  actual deletion of the player and job record after a timeout.
+                    for player in players:
+                        if players[player].train_id == tid:
+                            deleted_player = player
+                            for job in working_jobs:
+                                for name in working_jobs[job].crew:
+                                    if name == players[player].discord_name:
+                                        deleted_job = job
+                            deleted_player_trains[tid].append(DeletedTrainWatch(tid, last_world_datetime,
+                                                                                last_trains[tid].symbol,
+                                                                                deleted_player, deleted_job))
+
                     players_deleted = list()
                     jobs_deleted = list()
                     for player in players:
