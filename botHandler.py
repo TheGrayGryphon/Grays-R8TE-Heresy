@@ -101,6 +101,7 @@ global last_world_datetime
 
 
 def update_world_state(world_trains):
+    msg = None
     symbol_list = list()
     world_trains.clear()
     tree = ET.parse(SAVENAME)
@@ -108,36 +109,42 @@ def update_world_state(world_trains):
     world_save_datetime = datetime.strptime(root.find('date').text.split('.')[0], '%Y-%m-%dT%H:%M:%S')
     cuts = parse_train_loader(root)
     for cut in cuts:
-        if cut.consist[0].unit_type == DIESEL_ENGINE:  # We are only interested in consists with lead locos
-            tid = cut.train_id
-            tag = cut.consist[0].dest_tag
-            nbr = cut.consist[0].unit_number
-            rp_1 = cut.consist[0].route_1
-            rp_2 = cut.consist[0].route_2
-            ts_1 = cut.consist[0].track_1
-            ts_2 = cut.consist[0].track_2
-            dist_1 = cut.consist[0].dist_1
-            dist_2 = cut.consist[0].dist_2
-            if tag in symbol_list:
-                if tag != 'None':
-                    pass
-                    #print(f'Duplicate symbol: [{tag}] found while parsing world save')
+        try:
+            if cut.consist[0].unit_type == DIESEL_ENGINE:  # We are only interested in consists with lead locos
+                tid = cut.train_id
+                tag = cut.consist[0].dest_tag
+                nbr = cut.consist[0].unit_number
+                rp_1 = cut.consist[0].route_1
+                rp_2 = cut.consist[0].route_2
+                ts_1 = cut.consist[0].track_1
+                ts_2 = cut.consist[0].track_2
+                dist_1 = cut.consist[0].dist_1
+                dist_2 = cut.consist[0].dist_2
+                if tag in symbol_list:
+                    if tag != 'None':
+                        pass
+                        #print(f'Duplicate symbol: [{tag}] found while parsing world save')
+                else:
+                    symbol_list.append(tag)
+                if 'amtrak' in cut.consist[0].filename.lower():
+                    train_type = 'Passenger'
+                else:
+                    train_type = 'Freight'
+                if cut.is_ai is True:
+                    eng = 'AI'
+                else:
+                    eng = 'None'
+                world_trains[tid] = Train(tid, tag, nbr, train_type, len(cut.consist), eng, cut.consist.copy(),
+                                          world_save_datetime, rp_1, rp_2, ts_1, ts_2, dist_1, dist_2)
             else:
-                symbol_list.append(tag)
-            if 'amtrak' in cut.consist[0].filename.lower():
-                train_type = 'Passenger'
-            else:
-                train_type = 'Freight'
-            if cut.is_ai is True:
-                eng = 'AI'
-            else:
-                eng = 'None'
-            world_trains[tid] = Train(tid, tag, nbr, train_type, len(cut.consist), eng, cut.consist.copy(),
-                                      world_save_datetime, rp_1, rp_2, ts_1, ts_2, dist_1, dist_2)
-        else:
-            # First car is not a locomotive, so not a valid train
-            pass
-    return world_save_datetime
+                # First car is not a locomotive, so not a valid train
+                pass
+
+        except IndexError:
+            msg = (f'**WARNING** : Malformed train found in WorldSave.xml. Likely a server reboot is in order.'
+                   f' TID = {cut.train_id}')
+
+    return world_save_datetime, msg
 
 
 def find_tid(train_tag, train_list):
@@ -761,7 +768,7 @@ def run_discord_bot():
         # Check for initial startup
         if not last_world_datetime:  # First time through - populate the world from nothing
             last_worlds_save_modified_time = os.stat(SAVENAME).st_mtime  # Time
-            last_world_datetime = update_world_state(curr_trains)
+            last_world_datetime, error_status = update_world_state(curr_trains)
             msg = (f'{last_world_datetime} **--> r8te ({VERSION}) INITIALIZING NEW WORLD STATE <--** '
                    f'Total number of trains: {train_count("all", curr_trains, watched_trains)} '
                    f'(AI trains: {train_count("ai", curr_trains, watched_trains)},'
@@ -769,25 +776,33 @@ def run_discord_bot():
             print(msg)
             await send_ch_msg(CH_LOG, msg)
             await strike_alert_msgs(CH_ALERT)  # Get rid of any chaff from previous alerts
+            if error_status:
+                msg = f'{last_world_datetime} {error_status}'
+                print(msg)
+                await send_ch_msg(CH_LOG, msg)
 
         # Check for server reboot
         elif (os.stat(SAVENAME).st_mtime - last_worlds_save_modified_time) > REBOOT_TIME:
-            msg = '**Apparent server reboot** : Re-syncing train states'
+            msg = f'{last_world_datetime} **Apparent server reboot** : Re-syncing train states.\n'
             # Look for and archive player trains and capture existing player records
             player_updates = list()
             for player in players.values():
                 player_updates.append([player.discord_id, player.discord_name, player.train_symbol,
                                        player.train_id, player.job_thread])
-            msg += f'\nFound {len(player_updates)} players crewing trains.'
+            msg += f'...Found {len(player_updates)} players crewing trains.'
             for player in player_updates:
-                msg += f'\n{player[1]} : {player[2]} [{player[3]}]'
+                msg += f'\n....{player[1]} : {player[2]} [{player[3]}]'
             print(msg)
             await send_ch_msg(CH_LOG, msg)
             await asyncio.sleep(.5)
             players.clear()
             # Repopulate trains
             last_worlds_save_modified_time = os.stat(SAVENAME).st_mtime  # Time
-            last_world_datetime = update_world_state(curr_trains)
+            last_world_datetime, error_status = update_world_state(curr_trains)
+            if error_status:
+                msg = f'{last_world_datetime} {error_status}'
+                print(msg)
+                await send_ch_msg(CH_LOG, msg)
             # Re-add players
             for player in player_updates:
                 tid = find_tid(player[2], curr_trains)
@@ -840,7 +855,11 @@ def run_discord_bot():
             # Updated world save found
             last_worlds_save_modified_time = os.stat(SAVENAME).st_mtime
             last_trains = curr_trains.copy()  # Archive our current set of trains for comparison
-            last_world_datetime = update_world_state(curr_trains)  # Update the trains dictionary
+            last_world_datetime, error_status = update_world_state(curr_trains)  # Update the trains dictionary
+            if error_status:
+                msg = f'{last_world_datetime} {error_status}'
+                print(msg)
+                await send_ch_msg(CH_LOG, msg)
 
             # Check to see if any trains have been deleted
             nbr_ai_removed = 0
