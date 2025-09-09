@@ -13,6 +13,8 @@ from r8teInclude import (WORLDSAVE_PATH, AEI_PATH, DB_FILENAME, LOG_FILENAME, AI
                          GREEN_CIRCLE, AXE, TRACK_AI_DD, VERSION)
 from r8teInclude import Car, Cut, Train, Player, AeiReport, CarReport, Job
 import r8teDB
+import shutil
+
 
 DEBUG = True
 
@@ -99,12 +101,19 @@ detector_file_time: float = 0.0
 global last_world_datetime
 
 
-def update_world_state(world_trains):
+def update_world_state(last_update_time, world_trains):
     msg = None
     symbol_list = list()
+    try:
+        tree = ET.parse(SAVENAME)
+        root = tree.getroot()
+    except ET.ParseError as e:
+        msg = f'ET.ParseError: {e} encountered while parsing {SAVENAME}, returning last world state and '
+        msg += 'copying world save to file:"CORRUPT_WORLD_SAVE.xml'
+        shutil.copy(f'{SAVENAME}', WORLDSAVE_PATH + '/CORRUPT_WORLD_SAVE.xml')
+        return last_update_time, msg
+
     world_trains.clear()
-    tree = ET.parse(SAVENAME)
-    root = tree.getroot()
     world_save_datetime = datetime.strptime(root.find('date').text.split('.')[0], '%Y-%m-%dT%H:%M:%S')
     cuts = parse_train_loader(root)
     for cut in cuts:
@@ -767,7 +776,7 @@ def run_discord_bot():
         # Check for initial startup
         if not last_world_datetime:  # First time through - populate the world from nothing
             last_worlds_save_modified_time = os.stat(SAVENAME).st_mtime  # Time
-            last_world_datetime, error_status = update_world_state(curr_trains)
+            last_world_datetime, error_status = update_world_state(last_world_datetime, curr_trains)
             msg = (f'{last_world_datetime} **--> r8te ({VERSION}) INITIALIZING NEW WORLD STATE <--** '
                    f'Total number of trains: {train_count("all", curr_trains, watched_trains)} '
                    f'(AI trains: {train_count("ai", curr_trains, watched_trains)},'
@@ -797,7 +806,7 @@ def run_discord_bot():
             players.clear()
             # Repopulate trains
             last_worlds_save_modified_time = os.stat(SAVENAME).st_mtime  # Time
-            last_world_datetime, error_status = update_world_state(curr_trains)
+            last_world_datetime, error_status = update_world_state(last_world_datetime, curr_trains)
             if error_status:
                 msg = f'{last_world_datetime} {error_status}'
                 print(msg)
@@ -854,7 +863,7 @@ def run_discord_bot():
             # Updated world save found
             last_worlds_save_modified_time = os.stat(SAVENAME).st_mtime
             last_trains = curr_trains.copy()  # Archive our current set of trains for comparison
-            last_world_datetime, error_status = update_world_state(curr_trains)  # Update the trains dictionary
+            last_world_datetime, error_status = update_world_state(last_world_datetime, curr_trains)  # Update the trains dictionary
             if error_status:
                 msg = f'{last_world_datetime} {error_status}'
                 print(msg)
