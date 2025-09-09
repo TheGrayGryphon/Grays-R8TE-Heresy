@@ -30,6 +30,18 @@ TMP_FILENAME = 'r8te_msg.txt'
 
 event_db = list()
 
+curr_trains = dict()  # Dict of all trains in the world
+watched_trains = dict()  # Dict of trains which are stalled/stuck
+players = dict()  # Dict of player controlled trains
+alert_messages = defaultdict(list)  # Dict of messages sent to alert channel
+detector_reports = defaultdict(list)
+deleted_player_trains = defaultdict(DeletedTrainWatch)
+working_jobs = dict()
+detector_files = list()
+detector_file_time: float = 0.0
+
+global last_world_datetime
+
 
 def parse_train_loader(root):
     cuts = list()
@@ -85,19 +97,6 @@ def location(route_id, track_index):
             return route_id
     else:
         return route_id
-
-
-curr_trains = dict()  # Dict of all trains in the world
-watched_trains = dict()  # Dict of trains which are stalled/stuck
-players = dict()  # Dict of player controlled trains
-alert_messages = defaultdict(list)  # Dict of messages sent to alert channel
-detector_reports = defaultdict(list)
-deleted_player_trains = defaultdict(list)
-working_jobs = dict()
-detector_files = list()
-detector_file_time: float = 0.0
-
-global last_world_datetime
 
 
 def update_world_state(world_trains):
@@ -885,16 +884,23 @@ def run_discord_bot():
                     for player in players:
                         if players[player].train_id == tid:
                             deleted_player = player
+                            deleted_job = None
                             for job in working_jobs:
                                 for name in working_jobs[job].crew:
                                     if name == players[player].discord_name:
                                         deleted_job = job
-                            deleted_player_trains[tid].append(DeletedTrainWatch(tid, last_world_datetime,
-                                                                                last_trains[tid].symbol,
-                                                                                deleted_player, deleted_job))
+                            deleted_player_trains[tid] = DeletedTrainWatch(tid, last_world_datetime,
+                                                                           last_trains[tid].symbol,
+                                                                           deleted_player, deleted_job)
+                            print(f'Deleted train {players[player].train_symbol} was being crewed. '
+                                  f'Watching to see if respawned')
 
-                    players_deleted = list()
-                    jobs_deleted = list()
+            # Run through the deleted_player_trains list to determine if it's really time to nuke them
+            players_deleted = list()
+            jobs_deleted = list()
+            for tid in deleted_player_trains:
+                print(f'Checking deleted player train list: {deleted_player_trains[tid].train_symbol}')
+                if (last_world_datetime - deleted_player_trains[tid].delete_time).total_seconds() > 250:
                     for player in players:
                         if players[player].train_id == tid:
                             players_deleted.append(player)
@@ -911,10 +917,22 @@ def run_discord_bot():
                             forum_thread = await bot.fetch_channel(players[player].job_thread)
                             await send_ch_msg(forum_thread, msg)
                             await asyncio.sleep(.5)
+                            print(f'Potential deleted train {players[player].train_symbol} was NUKED.')
                     for player in players_deleted:
                         del players[player]
                     for job in jobs_deleted:
                         del working_jobs[job]
+
+            # Run through the deleted_player_trains list to determine if any have respawned with same symbol
+            for tid in deleted_player_trains:
+                new_tid = find_tid(deleted_player_trains[tid].train_symbol, curr_trains)
+                if new_tid > 0:
+                    print(f'Player crewed train {deleted_player_trains[tid].train_symbol} '
+                          f'respawned as TID: {new_tid} (formally {deleted_player_trains[tid].train_id}')
+                    # Adjust the tid for the player crewed entry
+                    players[deleted_player_trains[tid].player_id].train_id = new_tid
+                    # remove this deleted_player_train entry
+                    del deleted_player_trains[tid]
 
             # Run through each player record and check that the symbol to tid correspondence hasn't changed
             # Also, populate player / job info on new train dict
