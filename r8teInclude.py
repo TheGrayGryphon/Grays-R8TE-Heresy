@@ -1,6 +1,6 @@
 import configparser
 
-VERSION = ('9Sep25')
+VERSION = ('11Sep25')
 CONFIG_FILE = 'r8te.cfg'
 
 
@@ -233,13 +233,13 @@ class Job:
 
 class DeletedTrainWatch:
 
-    __slots__ = ('train_id', 'delete_time', 'train_symbol', 'player_id', 'job_id')
+    __slots__ = ('train_id', 'delete_time', 'train_symbol', 'discord_id', 'job_id')
 
-    def __init__(self, train_id, delete_time, train_symbol, player_id, job_id):
+    def __init__(self, train_id, delete_time, train_symbol, discord_id, job_id):
         self.train_id = train_id
         self.delete_time = delete_time
         self.train_symbol = train_symbol
-        self.player_id = player_id
+        self.discord_id = discord_id
         self.job_id = job_id
 
 
@@ -266,6 +266,7 @@ try:
     REMINDER_TIME = int(config['r8te']['reminder_time'])
     IGNORED_TAGS = [tag.strip().lower() for tag in config['r8te']['ignored_tags'].split(',')]
     REBOOT_TIME = int(config['r8te']['reboot_time'])
+    PLAYER_RESPAWN_TIME = int(config['r8te']['player_respawn_time'])
     temp = config['r8te']['track_ai_detectors']
     if temp.lower() == 'true':
         TRACK_AI_DD = True
