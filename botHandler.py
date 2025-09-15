@@ -411,7 +411,6 @@ def run_discord_bot():
         async for message in thread.history(limit=None):
             if 'JOBID#' in message.content:
                 jobid = message.content.split('`')[1]
-                print(f'found jobID {jobid} within {message.content}')
         thread_name = ctx.channel.name
         forum_channel = thread.parent
         tag_to_add = discord.utils.find(lambda t: t.name.lower() == CREWED_TAG.lower(), forum_channel.available_tags)
@@ -474,7 +473,9 @@ def run_discord_bot():
                         ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
                         job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
                         job_id += f' | {thread_name}'
-                        content = f'Job Title: {thread_name} <#{thread.id}>'
+                        content = f'Job Title: {thread_name}\n Link: <#{thread.id}>\n\n'
+                        content += f'```Work Summary:\n <employee> | <action> | <timestamp> | <elapsed hours>'
+                        content += f'\n-----------------------------------------------------```'
                         ledger_thread = await ledger_channel.create_thread(name=job_id,
                                                                            content=content)
                         no_job_msg = (f'[r8TE JOB ADMIN] {last_world_datetime} No job entry in ledger, '
@@ -482,9 +483,16 @@ def run_discord_bot():
                         await thread.send(no_job_msg)
                     embed_msg = discord.Embed(title='CREW RECORD', color=discord.Color.green())
                     embed_msg.add_field(name='__Employee__', value=str(ctx.author.display_name), inline=False)
-                    embed_msg.add_field(name='__Activity__', value='CLOCK IN', inline=False)
+                    embed_msg.add_field(name='__Activity__', value='CREW (CLOCK IN)', inline=False)
                     embed_msg.add_field(name='__Time__', value=str(last_world_datetime), inline=False)
                     await ledger_thread.send(embed=embed_msg)
+                    # Edit summary at top of thread
+                    first_msg = await ledger_thread.history(limit=1, oldest_first=True).flatten()
+                    msg_obj = first_msg[0]
+                    new_content = (msg_obj.content[:-3] +
+                                   f'\n{ctx.author.display_name} | CLOCK__IN | {last_world_datetime} | 0.0```')
+                    await msg_obj.edit(content=new_content)
+
                 else:
                     await ctx.respond(f'**UNABLE TO CREW, Train {symbol} shows '
                                       f'crewed by {curr_trains[tid].engineer}**', ephemeral=True)
@@ -534,13 +542,13 @@ def run_discord_bot():
                     if tag_to_remove in current_tags:
                         current_tags.remove(tag_to_remove)
                     msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
-                           f'{curr_trains[tid].symbol} at {location}\nTime worked: {time_worked} hours.')
+                           f'{curr_trains[tid].symbol} at {location}\nTime worked: {time_worked} hours')
                     del working_jobs[thread_id]
                 else:
                     # Multi-crew train
                     working_jobs[thread_id].crew.remove(ctx.author.display_name)
                     msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
-                           f'{curr_trains[tid].symbol} at {location}\nTime worked: {time_worked} hours.\n'
+                           f'{curr_trains[tid].symbol} at {location}\nTime worked: {time_worked} hours\n'
                            f'Job *{working_jobs[thread_id].name}* still being worked by:')
                     for player in working_jobs[thread_id].crew:
                         msg += f' {player},'
@@ -570,7 +578,9 @@ def run_discord_bot():
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
                     job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
                     job_id += f' | {thread_name}'
-                    content = f'Job Title: {thread_name} <#{thread.id}>'
+                    content = f'Job Title: {thread_name}\n Link: <#{thread.id}>\n\n'
+                    content += f'```Work Summary:\n <employee> | <action> | <timestamp> | <elapsed hours>'
+                    content += f'\n-----------------------------------------------------```'
                     ledger_thread = await ledger_channel.create_thread(name=job_id,
                                                                        content=content)
                     no_job_msg = (f'[r8TE JOB ADMIN] {last_world_datetime} No job entry in ledger, '
@@ -583,6 +593,14 @@ def run_discord_bot():
                 embed_msg.add_field(name='__Location__', value=str(location), inline=False)
                 embed_msg.add_field(name='__Hours logged__', value=str(time_worked), inline=False)
                 await ledger_thread.send(embed=embed_msg)
+                # Edit summary at top of thread
+                first_msg = await ledger_thread.history(limit=1, oldest_first=True).flatten()
+                msg_obj = first_msg[0]
+                new_content = (msg_obj.content[:-3] +
+                               f'\n{ctx.author.display_name} | CLOCK_OUT | '
+                               f'{last_world_datetime} | {time_worked}```')
+                await msg_obj.edit(content=new_content)
+
                 return
             else:
                 await ctx.respond(f'**ERROR** Unable to tie-down: '
@@ -645,7 +663,9 @@ def run_discord_bot():
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
                     job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
                     job_id += f' | {thread_name}'
-                    content = f'Job Title: {thread_name} <#{thread.id}>'
+                    content = f'Job Title: {thread_name}\n Link: <#{thread.id}>\n\n'
+                    content += f'```Work Summary:\n <employee> | <action> | <timestamp> | <elapsed hours>'
+                    content += f'\n-----------------------------------------------------```'
                     ledger_thread = await ledger_channel.create_thread(name=job_id,
                                                                        content=content)
                     no_job_msg = (f'[r8TE JOB ADMIN] {last_world_datetime} No job entry in ledger, '
@@ -663,7 +683,7 @@ def run_discord_bot():
                         current_tags.remove(tag2_to_remove)
                     msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
                            f'{curr_trains[tid].symbol}, and marked job '
-                           f'*{working_jobs[thread_id].name}* `{COMPLETED_TAG}`\nTime worked: {time_worked} hours.')
+                           f'*{working_jobs[thread_id].name}* `{COMPLETED_TAG}`\nTime worked: {time_worked} hours')
                     embed_msg = discord.Embed(title='CREW RECORD', color=discord.Color.orange())
                     embed_msg.add_field(name='__Employee__', value=str(ctx.author.display_name), inline=False)
                     embed_msg.add_field(name='__Activity__', value='MARK COMPLETE (CLOCK OUT)', inline=False)
@@ -671,14 +691,20 @@ def run_discord_bot():
                     if notes:
                         embed_msg.add_field(name='__Employee note(s)__', value=str(notes), inline=False)
                     embed_msg.add_field(name='__Hours logged__', value=str(time_worked), inline=False)
-
+                    # Edit summary at top of thread
+                    first_msg = await ledger_thread.history(limit=1, oldest_first=True).flatten()
+                    msg_obj = first_msg[0]
+                    new_content = (msg_obj.content[:-3] +
+                                   f'\n{ctx.author.display_name} | CLOCK_OUT | '
+                                   f'{last_world_datetime} | {time_worked}```')
+                    await msg_obj.edit(content=new_content)
                     del working_jobs[thread_id]
 
                 else:
                     # Multi-crew train, so tie down instead
                     working_jobs[thread_id].crew.remove(ctx.author.display_name)  # Remove player from job list
                     msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
-                           f'{curr_trains[tid].symbol}\nTime worked: {time_worked} hours.\n'
+                           f'{curr_trains[tid].symbol}\nTime worked: {time_worked} hours\n'
                            f'Job *{working_jobs[thread_id].name}* still being worked by:')
                     for player in working_jobs[thread_id].crew:
                         msg += f' {player},'
@@ -693,9 +719,15 @@ def run_discord_bot():
                     if notes:
                         embed_msg.add_field(name='__Employee note(s)__', value=str(notes), inline=False)
                     embed_msg.add_field(name='__Hours logged__', value=str(time_worked), inline=False)
-
+                    # Edit summary at top of thread
+                    first_msg = await ledger_thread.history(limit=1, oldest_first=True).flatten()
+                    msg_obj = first_msg[0]
+                    new_content = (msg_obj.content[:-3] +
+                                   f'\n{ctx.author.display_name} | CLOCK_OUT | '
+                                   f'{last_world_datetime} | {time_worked}```')
+                    await msg_obj.edit(content=new_content)
                 if notes:
-                    msg += f'. Notes: {notes}'
+                    msg += f'\nNotes: {notes}'
                 await thread.send(msg)
                 await thread.edit(applied_tags=current_tags)
                 await send_ch_msg(CH_LOG, msg)
