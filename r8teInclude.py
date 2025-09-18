@@ -1,6 +1,6 @@
 import configparser
 
-VERSION = ('14Sep25')
+VERSION = ('18Sep25')
 CONFIG_FILE = 'r8te.cfg'
 
 
@@ -283,6 +283,7 @@ try:
     CREWED_TAG = config['discord']['crewed_tag']
     AVAILABLE_TAG = config['discord']['available_tag']
     COMPLETED_TAG = config['discord']['completed_tag']
+    STAFF_TAG = config['discord']['staff_tag']
     RED_SQUARE = f":{config['discord']['alert_emoji']}:"
     RED_EXCLAMATION = f":{config['discord']['reminder_emoji']}:"
     GREEN_CIRCLE = f":{config['discord']['moving_emoji']}:"
