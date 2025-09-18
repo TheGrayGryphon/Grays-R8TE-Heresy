@@ -468,6 +468,108 @@ def run_discord_bot():
         except Exception as e:
             await ctx.respond(f'[r8TE] **ERROR**: {e}', ephemeral=True)
 
+    @bot.slash_command(name='crew', description=f"Crew a train")
+    @option("symbol", description="Train symbol", required=True)
+    # NOTE: This command must be executed within a forum thread
+    async def crew(ctx: discord.ApplicationContext, symbol: str):
+        global last_world_datetime
+        global working_jobs
+
+        thread = ctx.channel
+        thread_id = ctx.channel.id
+        async for message in thread.history(limit=None):
+            if 'JOBID#' in message.content:
+                jobid = message.content.split('`')[1]
+        thread_name = ctx.channel.name
+        forum_channel = thread.parent
+        tag_to_add = discord.utils.find(lambda t: t.name.lower() == CREWED_TAG.lower(), forum_channel.available_tags)
+        tag_to_remove = discord.utils.find(lambda t: t.name.lower() == AVAILABLE_TAG.lower(),
+                                           forum_channel.available_tags)
+        if not tag_to_add or not tag_to_remove:
+            await ctx.respond(f'[r8TE] **ERROR**: Tag `{CREWED_TAG}` and/or {AVAILABLE_TAG} not found in this forum.'
+                              , ephemeral=True)
+            return
+        current_tags = thread.applied_tags or []
+        if tag_to_add in current_tags:
+            if not any(tag in symbol.lower() for tag in IGNORED_TAGS):
+                await ctx.respond(f'This job is already marked `{tag_to_add.name}` - unable to crew.', ephemeral=True)
+                return
+        try:
+            await ctx.respond(f'Attempting to crew train {symbol}', ephemeral=True)
+            nbr_of_symbols = duplicate_symbol(curr_trains, symbol)
+            if nbr_of_symbols > 1:
+                await ctx.respond(f'**UNABLE TO CREW** : Train symbol "{symbol}" '
+                                  f'found on {nbr_of_symbols} trains.', ephemeral=True)
+                return
+            tid = find_tid(symbol, curr_trains)
+            if tid != -1:
+                if curr_trains[tid].engineer.lower() == 'none':
+                    if player_crew_train(curr_trains, tid, ctx.author.id, ctx.author.display_name, thread_id,
+                                         last_world_datetime) < 0:
+                        await ctx.respond(f'**UNABLE TO CREW** : You are currently listed as crewing'
+                                          f' [{players[ctx.author.mention].train_symbol}]**', ephemeral=True)
+                        return
+                    if tag_to_add not in current_tags:
+                        current_tags.append(tag_to_add)
+                    if tag_to_remove in current_tags:
+                        current_tags.remove(tag_to_remove)
+
+                    try:
+                        working_jobs[thread_id].crew.append(ctx.author.display_name)
+                    except KeyError:
+                        working_jobs[thread_id] = Job(thread_name, [ctx.author.display_name])
+
+                    msg = f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} '
+                    if len(working_jobs[thread_id].crew) > 1:
+                        msg += f'crewed {curr_trains[tid].symbol}, assisting on job: *{thread_name}*'
+                    else:
+                        msg += f'crewed {curr_trains[tid].symbol}, working job: *{thread_name}*'
+                    await thread.edit(applied_tags=current_tags)
+                    await send_ch_msg(CH_LOG, msg)
+                    await thread.send(msg)
+                    # Update job ledger; First see if we have already created a ledger entry
+                    jobid = None
+                    async for message in thread.history(limit=None):
+                        if 'JOBID#' in message.content:  # Look through messages within this thread looking for keyword
+                            jobid = message.content.split('`')[1]
+                    if jobid:
+                        ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
+                        ledger_thread = thread  # Just in case we can't find the job thread
+                        for test_thread in ledger_channel.threads:
+                            if test_thread.name == jobid:
+                                ledger_thread = test_thread
+                    else:  # No existing job ID thread found, so make a new one
+                        ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
+                        job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
+                        job_id += f' | {thread_name}'
+                        content = f'Job Title: {thread_name}\n Link: <#{thread.id}>\n\n'
+                        content += f'```---- Effort ledger ----```'
+                        ledger_thread = await ledger_channel.create_thread(name=job_id,
+                                                                           content=content)
+                        no_job_msg = (f'[r8TE JOB ADMIN] {last_world_datetime} '
+                                      f'NEW LEDGER JOBID# `{job_id}`   <#{ledger_thread.id}>')
+                        await thread.send(no_job_msg)
+                    embed_msg = discord.Embed(title='CREW RECORD', color=discord.Color.green())
+                    embed_msg.add_field(name='__Employee__', value=str(ctx.author.display_name), inline=False)
+                    embed_msg.add_field(name='__Activity__', value='CREW (CLOCK IN)', inline=False)
+                    embed_msg.add_field(name='__Time__', value=str(last_world_datetime), inline=False)
+                    await ledger_thread.send(embed=embed_msg)
+                    # Edit summary at top of thread
+                    first_msg = await ledger_thread.history(limit=1, oldest_first=True).flatten()
+                    msg_obj = first_msg[0]
+                    new_content = (msg_obj.content[:-3] +
+                                   f'\n{ctx.author.display_name} | CLOCK__IN | {last_world_datetime} | 0.0```')
+                    await msg_obj.edit(content=new_content)
+
+                else:
+                    await ctx.respond(f'**UNABLE TO CREW, Train {symbol} shows '
+                                      f'crewed by {curr_trains[tid].engineer}**', ephemeral=True)
+            else:
+                await ctx.respond(f'**UNABLE TO CREW, Train {symbol} not found**', ephemeral=True)
+        except discord.Forbidden:
+            await ctx.respond('[r8TE] **ERROR**: I do not have permission to edit this thread.', ephemeral=True)
+        except Exception as e:
+            await ctx.respond(f'[r8TE] **ERROR**: {e}', ephemeral=True)
 
     @bot.slash_command(name='tie_down', description=f"Tie down a train")
     @option("location", description="Tie-down location", required=True)
