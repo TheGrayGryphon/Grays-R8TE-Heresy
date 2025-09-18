@@ -441,7 +441,7 @@ def run_discord_bot():
         except Exception as e:
             await ctx.respond(f'[r8TE] **ERROR**: {e}', ephemeral=True)
 
-    @bot.slash_command(guild_ids=[1142113773738528768], name='staff_help', description="Mark job as needing staff attention")
+    @bot.slash_command(name='staff_help', description="Mark job as needing staff attention")
     @option("note", description="Describe the issue", required=False)
     # NOTE: This command must be executed within a forum thread
     async def staff_help(ctx: discord.ApplicationContext, note: str):
