@@ -749,12 +749,13 @@ def run_discord_bot():
                     # Since job has completed, we also sum all the work done and update the job ledger
                     total_time = 0
                     new_content = new_content[:-3] + '\n---- Job complete, effort summary below ----'
+                    name_len = len(max(employee, key=len))
                     for key in employee.keys():
                         employee_time = 0
                         for time_worked in employee[key]:
                             employee_time += time_worked
                             total_time += time_worked
-                        new_content += f'\n{key}: {round(employee_time, 2)} hours'
+                        new_content += f'\n{key: <{name_len}}: {round(employee_time, 2)} hours'
                     new_content += f'\nTotal time worked on this job: {round(total_time, 2)} hours```'
                 await msg_obj.edit(content=new_content)
                 await thread.send(msg)
