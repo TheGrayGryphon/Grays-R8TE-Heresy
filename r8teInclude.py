@@ -1,6 +1,6 @@
 import configparser
 
-VERSION = ('22Sep25')
+VERSION = ('22Sep25a')
 CONFIG_FILE = 'r8te.cfg'
 
 
@@ -267,6 +267,7 @@ try:
     IGNORED_TAGS = [tag.strip().lower() for tag in config['r8te']['ignored_tags'].split(',')]
     REBOOT_TIME = int(config['r8te']['reboot_time'])
     PLAYER_RESPAWN_TIME = int(config['r8te']['player_respawn_time'])
+    STATUS_REPORT_TIME = int(config['r8te']['status_report_time'])
     temp = config['r8te']['track_ai_detectors']
     if temp.lower() == 'true':
         TRACK_AI_DD = True
