@@ -725,8 +725,11 @@ def run_discord_bot():
                               f' not found in this forum.', ephemeral=True)
             return
         current_tags = thread.applied_tags or []
-        if tag_to_add in current_tags:
+        if tag_to_add in current_tags:  # Is this already marked complete?
             await ctx.respond(f'This job is already marked `{tag_to_add.name}` - unable to change.', ephemeral=True)
+            return
+        elif tag1_to_remove not in current_tags:    # Make sure this is currently a job in progress
+            await ctx.respond(f'You can only `/complete` a job which is currently being crewed.', ephemeral=True)
             return
         try:
             await ctx.respond(f'Attempting to mark *{working_jobs[thread_id].name}* as complete.', ephemeral=True)
