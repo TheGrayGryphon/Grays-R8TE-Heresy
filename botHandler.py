@@ -413,7 +413,14 @@ def run_discord_bot():
         global working_jobs
 
         thread = ctx.channel
+        # thread_id = ctx.channel.id
+        # thread_name = ctx.channel.name
+        if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
+            await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
+            return
+        # thread_name = ctx.channel.name
         forum_channel = thread.parent
+
         tag_to_add = discord.utils.find(lambda t: t.name.lower() == AVAILABLE_TAG.lower(), forum_channel.available_tags)
         if not tag_to_add:
             await ctx.respond(f'[r8TE] **ERROR**: Tag `{AVAILABLE_TAG}` not found in this forum.', ephemeral=True)
@@ -449,7 +456,14 @@ def run_discord_bot():
         global working_jobs
 
         thread = ctx.channel
+        # thread_id = ctx.channel.id
+        # thread_name = ctx.channel.name
+        if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
+            await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
+            return
+        # thread_name = ctx.channel.name
         forum_channel = thread.parent
+
         tag_to_add = discord.utils.find(lambda t: t.name.lower() == STAFF_TAG.lower(), forum_channel.available_tags)
         if not tag_to_add:
             await ctx.respond(f'[r8TE] **ERROR**: Tag `{STAFF_TAG}` not found in this forum.', ephemeral=True)
@@ -477,11 +491,13 @@ def run_discord_bot():
 
         thread = ctx.channel
         thread_id = ctx.channel.id
-        async for message in thread.history(limit=None):
-            if 'JOBID#' in message.content:
-                jobid = message.content.split('`')[1]
+        thread_name = ctx.channel.name
+        if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
+            await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
+            return
         thread_name = ctx.channel.name
         forum_channel = thread.parent
+
         tag_to_add = discord.utils.find(lambda t: t.name.lower() == CREWED_TAG.lower(), forum_channel.available_tags)
         tag_to_remove = discord.utils.find(lambda t: t.name.lower() == AVAILABLE_TAG.lower(),
                                            forum_channel.available_tags)
@@ -578,7 +594,7 @@ def run_discord_bot():
         thread_id = ctx.channel.id
         thread_name = ctx.channel.name
         if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
-            await ctx.respond('This command must be used inside a forum thread.', ephemeral=True)
+            await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
             return
         forum_channel = thread.parent
         tag_to_add = discord.utils.find(lambda t: t.name.lower() == AVAILABLE_TAG.lower(), forum_channel.available_tags)
@@ -695,9 +711,8 @@ def run_discord_bot():
         thread = ctx.channel
         thread_id = ctx.channel.id
         thread_name = ctx.channel.name
-
         if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
-            await ctx.respond('This command must be used inside a forum thread.', ephemeral=True)
+            await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
             return
         forum_channel = thread.parent
         tag_to_add = discord.utils.find(lambda t: t.name.lower() == COMPLETED_TAG.lower(), forum_channel.available_tags)
