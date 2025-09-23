@@ -540,7 +540,6 @@ def run_discord_bot():
                     else:
                         msg += f'crewed {curr_trains[tid].symbol}, working job: *{thread_name}*'
                     await thread.edit(applied_tags=current_tags)
-                    await send_ch_msg(CH_LOG, msg)
                     await thread.send(msg)
                     # Update job ledger; First see if we have already created a ledger entry
                     jobid = None
@@ -691,7 +690,6 @@ def run_discord_bot():
                     total += time_worked
                 msg += f'\n{ctx.author.display_name} has accrued {round(total, 2)} hours worked on this job.'
                 await thread.send(msg)
-                await send_ch_msg(CH_LOG, msg)
                 await thread.edit(applied_tags=current_tags)
 
                 return
@@ -851,7 +849,6 @@ def run_discord_bot():
                 await msg_obj.edit(content=new_content)
                 await thread.send(msg)
                 await thread.edit(applied_tags=current_tags)
-                await send_ch_msg(CH_LOG, msg)
                 await ledger_thread.send(embed=embed_msg)
                 if tid in watched_trains:
                     # This train has a watch on it - time to remove, and strike-thru previous alert messages
@@ -1218,10 +1215,10 @@ def run_discord_bot():
                             msg = f'Player {player.discord_name} train [{player.train_symbol}] has changed ID '
                             msg += f'from {player.train_id} to {new_tid}. Updating player record.'
                             player.train_id = new_tid
-                        else:
-                            msg = f'**Missing player train** {player.discord_name} train [{player.train_symbol}] '
-                            msg += (f'no longer has a valid TID, which may indicate a leader change.'
-                                    f' Leaving player record alone.')
+                        # else:
+                        #     msg = f'**Missing player train** {player.discord_name} train [{player.train_symbol}] '
+                        #     msg += (f'no longer has a valid TID, which may indicate a leader change.'
+                        #             f' Leaving player record alone.')
                         await send_ch_msg(CH_LOG, msg)
                         await asyncio.sleep(.3)
                     curr_trains[player.train_id].discord_id = player.discord_id
