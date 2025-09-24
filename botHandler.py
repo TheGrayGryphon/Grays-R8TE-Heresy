@@ -247,6 +247,33 @@ def log_msg(msg):
         fp.write(msg + '\n')
 
 
+def prettify(msg):
+    header = msg.split('```')[0]
+    body = msg.split('```')[1]
+    entries = list()
+    max_c1 = 0
+    max_c2 = 0
+    max_c3 = 0
+    max_c4 = 0
+    return_msg = header + '\n```'
+    lines = body.split('\n')
+    for line in lines:
+        if '|' in line:
+            entries.append(line.split('|'))
+        else:
+            return_msg += f'{line}\n'
+    for entry in entries:
+        max_c1 = max(max_c1, len(entry[0]))
+        max_c2 = max(max_c2, len(entry[1]))
+        max_c3 = max(max_c3, len(entry[2]))
+        max_c4 = max(max_c4, len(entry[3]))
+    for entry in entries:
+        return_msg += f'{entry[0]: <{max_c1}}|{entry[1]: <{max_c2}}|{entry[2]: <{max_c3}}|{entry[3]: <{max_c4}}\n'
+    return_msg = return_msg[:-1] + '```'
+
+    return return_msg
+
+
 bot = discord.Bot(intents=intents)
 
 
@@ -572,8 +599,9 @@ def run_discord_bot():
                     first_msg = await ledger_thread.history(limit=1, oldest_first=True).flatten()
                     msg_obj = first_msg[0]
                     new_content = (msg_obj.content[:-3] +
-                                   f'\n{ctx.author.display_name} | CLOCK__IN | {last_world_datetime} | 0.0```')
-                    await msg_obj.edit(content=new_content)
+                                   f'\n{ctx.author.display_name} | CLOCK_IN | {last_world_datetime} | 0.0```')
+                    new_message = prettify(new_content)
+                    await msg_obj.edit(content=new_message)
 
                 else:
                     await ctx.respond(f'**UNABLE TO CREW, Train {symbol} shows '
@@ -581,9 +609,9 @@ def run_discord_bot():
             else:
                 await ctx.respond(f'**UNABLE TO CREW, Train {symbol} not found**', ephemeral=True)
         except discord.Forbidden:
-            await ctx.respond('[r8TE] **ERROR**: I do not have permission to edit this thread.', ephemeral=True)
+            await ctx.respond('[r8TE] **ERROR** (*crew* command): no permission to edit this thread.', ephemeral=False)
         except Exception as e:
-            await ctx.respond(f'[r8TE] **ERROR**: {e}', ephemeral=True)
+            await ctx.respond(f'[r8TE] **ERROR** (*crew* command): {e}', ephemeral=False)
 
     @bot.slash_command(name='tie_down', description=f"Tie down a train")
     @option("location", description="Tie-down location", required=True)
@@ -677,9 +705,9 @@ def run_discord_bot():
                 first_msg = await ledger_thread.history(limit=1, oldest_first=True).flatten()
                 msg_obj = first_msg[0]
                 new_content = (msg_obj.content[:-3] +
-                               f'\n{ctx.author.display_name} | CLOCK_OUT | '
-                               f'{last_world_datetime} | {time_worked}```')
-                await msg_obj.edit(content=new_content)
+                               f'\n{ctx.author.display_name} | CLOCK_OUT | {last_world_datetime} | {time_worked}```')
+                new_message = prettify(new_content)
+                await msg_obj.edit(content=new_message)
                 # Give summary of hours player has worked
                 employee = defaultdict(list)
                 logs = new_content.split('```')[1].split('\n')  # Get the summary section
@@ -698,9 +726,10 @@ def run_discord_bot():
                                   f'You are not listed as crew on any train.', ephemeral=True)
 
         except discord.Forbidden:
-            await ctx.respond('[r8TE] does not have permission to edit this thread.', ephemeral=True)
+            await ctx.respond('[r8TE] **ERROR** (*tie_down* command): no permission to edit this thread.',
+                              ephemeral=False)
         except Exception as e:
-            await ctx.respond(f'[r8TE] Unexpected error: {e}', ephemeral=True)
+            await ctx.respond(f'[r8TE] **ERROR** (*tie_down* command): {e}', ephemeral=False)
 
     @bot.slash_command(name='complete', description=f"Mark a job complete")
     @option('notes', description='completion notes', required=False)
@@ -794,7 +823,8 @@ def run_discord_bot():
                     new_content = (msg_obj.content[:-3] +
                                    f'\n{ctx.author.display_name} | CLOCK_OUT | '
                                    f'{last_world_datetime} | {time_worked}```')
-                    await msg_obj.edit(content=new_content)
+                    new_message = prettify(new_content)
+                    await msg_obj.edit(content=new_message)
                     del working_jobs[thread_id]
                     job_complete = True
 
@@ -829,15 +859,15 @@ def run_discord_bot():
                 employee = defaultdict(list)
                 logs = new_content.split('```')[1].split('\n')  # Get the summary section
                 for i in range(1, len(logs)):  # Create dict with work logs keyed on player name with list of hours
-                    employee[logs[i].split('|')[0].strip().lower()].append(float(logs[i].split('|')[3].strip()))
+                    employee[logs[i].split('|')[0].strip()].append(float(logs[i].split('|')[3].strip()))
                 total = 0
-                for time_increment in employee[ctx.author.display_name.lower()]:
+                for time_increment in employee[ctx.author.display_name]:
                     total += time_increment
                 msg += f'\n{ctx.author.display_name} has accrued {round(total, 2)} hours on this job.'
                 if job_complete:
                     # Since job has completed, we also sum all the work done and update the job ledger
                     total_time = 0
-                    new_content = new_content[:-3] + '\n---- Job complete, effort summary below ----'
+                    new_content = new_content[:-3] + '\n\n---- Job complete, effort summary below ----'
                     name_len = len(max(employee, key=len))
                     for key in employee.keys():
                         employee_time = 0
@@ -845,7 +875,7 @@ def run_discord_bot():
                             employee_time += time_worked
                             total_time += time_worked
                         new_content += f'\n{key: <{name_len}}: {round(employee_time, 2)} hours'
-                    new_content += f'\nTotal time worked on this job: {round(total_time, 2)} hours```'
+                    new_content += f'\n\nTotal time worked on this job: {round(total_time, 2)} hours```'
                 await msg_obj.edit(content=new_content)
                 await thread.send(msg)
                 await thread.edit(applied_tags=current_tags)
@@ -862,9 +892,10 @@ def run_discord_bot():
             else:
                 await ctx.respond(f'Unable to mark as complete; are you sure you are clocked in?', ephemeral=True)
         except discord.Forbidden:
-            await ctx.respond('[r8TE] **ERROR**: I do not have permission to edit this thread.', ephemeral=True)
+            await ctx.respond('[r8TE] **ERROR** (*complete* command): no permission to edit this thread.',
+                              ephemeral=False)
         except Exception as e:
-            await ctx.respond(f'[r8TE] **ERROR**: {e}', ephemeral=True)
+            await ctx.respond(f'[r8TE] **ERROR** (*complete* command): {e}', ephemeral=False)
 
     @bot.slash_command(name="r8te_clear_crew", description="Remove player from crew status")
     @option('player_id', description='Player ID', required=True)
@@ -1321,7 +1352,7 @@ def run_discord_bot():
                         print(f'something odd in comparing these two:\n{curr_trains[tid]}\n{last_trains[tid]}')
 
             td = datetime.now() - status_timer
-            if td.seconds > STATUS_REPORT_TIME*60:     # Send status update
+            if td.seconds > STATUS_REPORT_TIME * 60:  # Send status update
                 status_timer = datetime.now()
                 msg = (f'{last_world_datetime} Summary: AI ({nbr_ai_moving}M, {nbr_ai_stopped}S, +{nbr_ai_added}, '
                        f'-{nbr_ai_removed}) | Player ({nbr_player_moving}M, {nbr_player_stopped}S) | '
