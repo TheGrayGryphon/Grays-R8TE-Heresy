@@ -1,6 +1,6 @@
 import configparser
 
-VERSION = ('24Sep25')
+VERSION = ('25Sep25')
 CONFIG_FILE = 'r8te.cfg'
 
 
@@ -250,9 +250,11 @@ if len(config.read(CONFIG_FILE)) == 0:
 
 try:
     # Local configuration options
-    USER_DB = config['local']['db_name']
+    USER_DB = config['local']['player_db']
+    JOB_DB = config['local']['job_db']
     LOG_FILE = config['local']['log_file']
-    DB_FILENAME = USER_DB + '.csv'
+    PLAYER_DB_FILENAME = USER_DB + '.csv'
+    JOB_DB_FILENAME = JOB_DB + '.csv'
     LOG_FILENAME = LOG_FILE + '.log'
 
     # run8 specific options
