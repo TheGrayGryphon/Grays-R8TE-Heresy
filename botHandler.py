@@ -8,11 +8,13 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import glob
 import os
-from r8teInclude import (WORLDSAVE_PATH, AEI_PATH, LOG_FILENAME, AI_ALERT_TIME, PLAYER_ALERT_TIME,
-                         REMINDER_TIME, BOT_TOKEN, CH_LOG, CH_ALERT, CH_DETECTOR, CREWED_TAG, COMPLETED_TAG,
-                         AVAILABLE_TAG, STAFF_TAG, LOCATION_DB, SCAN_TIME, IGNORED_TAGS, REBOOT_TIME,
+from r8teInclude import (WORLDSAVE_PATH, AEI_PATH, LOG_FILENAME, AI_ALERT_TIME, PLAYER_ALERT_TIME, PLAYER_DB_FILENAME,
+                         JOB_DB_FILENAME, REMINDER_TIME, BOT_TOKEN, CH_LOG, CH_ALERT, CH_DETECTOR, CREWED_TAG,
+                         COMPLETED_TAG, AVAILABLE_TAG, STAFF_TAG, LOCATION_DB, SCAN_TIME, IGNORED_TAGS, REBOOT_TIME,
                          PLAYER_RESPAWN_TIME, RED_SQUARE, RED_EXCLAMATION, GREEN_CIRCLE, AXE, TRACK_AI_DD,
                          JOB_TRACK_THREAD, STATUS_REPORT_TIME, VERSION)
+
+
 from r8teInclude import Car, Cut, Train, Player, AeiReport, CarReport, Job, DeletedTrainWatch
 import shutil
 
@@ -274,6 +276,21 @@ def prettify(msg):
     return return_msg
 
 
+def write_record(db, record):
+    with open(db, 'a') as fp:
+        fp.write(record + '\n')
+        records = fp.readlines()
+
+
+def query_db_sum(db, query_field, query_value, result_field):
+    total = 0.0
+    with open(db, 'r') as fp:
+        for line in fp:
+            if int(line.split(',')[query_field]) == query_value:
+                total += float(line.split(',')[result_field])
+    return total
+
+
 bot = discord.Bot(intents=intents)
 
 
@@ -508,6 +525,12 @@ def run_discord_bot():
         except Exception as e:
             await ctx.respond(f'[r8TE] **ERROR**: {e}', ephemeral=True)
 
+    @bot.slash_command(name='player_record', description="Show player how many hours they have logged in total.")
+    async def player_record(ctx: discord.ApplicationContext):
+        work_total = query_db_sum(PLAYER_DB_FILENAME,0,ctx.author.id,5)
+        await ctx.respond(f'[r8TE] Effort total for {ctx.author.display_name} is **{work_total}** hours.',
+                          ephemeral=True)
+
     @bot.slash_command(name='crew', description=f"Crew a train")
     @option("symbol", description="Train symbol", required=True)
     # NOTE: This command must be executed within a forum thread
@@ -717,6 +740,11 @@ def run_discord_bot():
                 for time_worked in employee[ctx.author.display_name.lower()]:
                     total += time_worked
                 msg += f'\n{ctx.author.display_name} has accrued {round(total, 2)} hours worked on this job.'
+                # Create database entry
+                job_name = ledger_thread.name.split('|')[1].strip()
+                db_entry = (f'{ctx.author.id},{ctx.author.display_name},TIE_DOWN,{last_world_datetime},'
+                            f'{job_name},{time_worked}')
+                write_record(PLAYER_DB_FILENAME, db_entry)
                 await thread.send(msg)
                 await thread.edit(applied_tags=current_tags)
 
@@ -825,6 +853,11 @@ def run_discord_bot():
                                    f'{last_world_datetime} | {time_worked}```')
                     new_message = prettify(new_content)
                     await msg_obj.edit(content=new_message)
+                    # Create database entry
+                    job_name = ledger_thread.name.split('|')[1].strip()
+                    db_entry = (f'{ctx.author.id},{ctx.author.display_name},COMPLETE,{last_world_datetime},'
+                                f'{job_name},{time_worked}')
+                    write_record(PLAYER_DB_FILENAME, db_entry)
                     del working_jobs[thread_id]
                     job_complete = True
 
@@ -853,6 +886,11 @@ def run_discord_bot():
                     new_content = (msg_obj.content[:-3] +
                                    f'\n{ctx.author.display_name} | CLOCK_OUT | '
                                    f'{last_world_datetime} | {time_worked}```')
+                    # Create database entry
+                    job_name = ledger_thread.name.split('|')[1].strip()
+                    db_entry = (f'{ctx.author.id},{ctx.author.display_name},TIE_DOWN,{last_world_datetime},'
+                                f'{job_name},{time_worked}')
+                    write_record(PLAYER_DB_FILENAME, db_entry)
                 if notes:
                     msg += f'\nNotes: {notes}'
                 # Give summary of hours player has worked
@@ -876,6 +914,10 @@ def run_discord_bot():
                             total_time += time_worked
                         new_content += f'\n{key: <{name_len}}: {round(employee_time, 2)} hours'
                     new_content += f'\n\nTotal time worked on this job: {round(total_time, 2)} hours```'
+                    job_num = ledger_thread.name.split('|')[0].strip()
+                    job_entry = f'{job_name},{job_num},{last_world_datetime},{round(total_time, 2)}'
+                    write_record(JOB_DB_FILENAME, job_entry)
+
                 await msg_obj.edit(content=new_content)
                 await thread.send(msg)
                 await thread.edit(applied_tags=current_tags)
