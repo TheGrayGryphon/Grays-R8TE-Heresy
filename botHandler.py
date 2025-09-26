@@ -279,7 +279,6 @@ def prettify(msg):
 def write_record(db, record):
     with open(db, 'a') as fp:
         fp.write(record + '\n')
-        records = fp.readlines()
 
 
 def query_db_sum(db, query_field, query_value, result_field):
