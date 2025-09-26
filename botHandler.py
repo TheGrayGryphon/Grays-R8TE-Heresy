@@ -1441,7 +1441,8 @@ def run_discord_bot():
                 defect_msg = 'None'
             msg = (f'{report.timestamp} DET RPT // {report.name} // {report.symbol} [{engineer}] '
                    f'| {report.speed} mph | {report.axles} axles | Defects: {defect_msg}')
-            for player in players.values():
+            local_players = players.copy()  # Protect against the players dict being changed while iterating below
+            for player in local_players.values():
                 if player.train_symbol.lower() in report.symbol.lower():
                     player_found = True
                     # Send report to job thread
