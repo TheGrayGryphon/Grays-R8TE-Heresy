@@ -742,7 +742,7 @@ def run_discord_bot():
                 # Create database entry
                 job_name = ledger_thread.name.split('|')[1].strip()
                 db_entry = (f'{ctx.author.id},{ctx.author.display_name},TIE_DOWN,{last_world_datetime},'
-                            f'{job_name},{time_worked}')
+                            f'{job_name.replace(","," ")},{time_worked}')
                 write_record(PLAYER_DB_FILENAME, db_entry)
                 await thread.send(msg)
                 await thread.edit(applied_tags=current_tags)
@@ -855,7 +855,7 @@ def run_discord_bot():
                     # Create database entry
                     job_name = ledger_thread.name.split('|')[1].strip()
                     db_entry = (f'{ctx.author.id},{ctx.author.display_name},COMPLETE,{last_world_datetime},'
-                                f'{job_name},{time_worked}')
+                                f'{job_name.replace(","," ")},{time_worked}')
                     write_record(PLAYER_DB_FILENAME, db_entry)
                     del working_jobs[thread_id]
                     job_complete = True
@@ -888,7 +888,7 @@ def run_discord_bot():
                     # Create database entry
                     job_name = ledger_thread.name.split('|')[1].strip()
                     db_entry = (f'{ctx.author.id},{ctx.author.display_name},TIE_DOWN,{last_world_datetime},'
-                                f'{job_name},{time_worked}')
+                                f'{job_name.replace(","," ")},{time_worked}')
                     write_record(PLAYER_DB_FILENAME, db_entry)
                 if notes:
                     msg += f'\nNotes: {notes}'
@@ -914,7 +914,7 @@ def run_discord_bot():
                         new_content += f'\n{key: <{name_len}}: {round(employee_time, 2)} hours'
                     new_content += f'\n\nTotal time worked on this job: {round(total_time, 2)} hours```'
                     job_num = ledger_thread.name.split('|')[0].strip()
-                    job_entry = f'{job_name},{job_num},{last_world_datetime},{round(total_time, 2)}'
+                    job_entry = f'{job_name.replace(","," ")},{job_num},{last_world_datetime},{round(total_time, 2)}'
                     write_record(JOB_DB_FILENAME, job_entry)
 
                 await msg_obj.edit(content=new_content)
