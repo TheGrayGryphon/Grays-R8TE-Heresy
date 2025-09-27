@@ -1363,7 +1363,7 @@ def run_discord_bot():
                                 await asyncio.sleep(.3)
                                 if curr_trains[tid].engineer.lower() != 'ai':
                                     player_msg = (
-                                        f'{curr_trains[tid].engineer}: You are currently crewing {curr_trains[tid].symbol},'
+                                        f'<@{curr_trains[tid].discord_id}>: You are currently crewing {curr_trains[tid].symbol},'
                                         f' yet your train has not moved for at least {td}. Should you tie down?')
                                     forum_thread = await bot.fetch_channel(curr_trains[tid].job_thread)
                                     alert_messages[tid].append(await send_ch_msg(forum_thread, player_msg))
