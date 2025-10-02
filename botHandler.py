@@ -1287,12 +1287,12 @@ def run_discord_bot():
                             msg = f'Player {player.discord_name} train [{player.train_symbol}] has changed ID '
                             msg += f'from {player.train_id} to {new_tid}. Updating player record.'
                             player.train_id = new_tid
+                            await send_ch_msg(CH_LOG, msg)
+                            await asyncio.sleep(.3)
                         # else:
                         #     msg = f'**Missing player train** {player.discord_name} train [{player.train_symbol}] '
                         #     msg += (f'no longer has a valid TID, which may indicate a leader change.'
                         #             f' Leaving player record alone.')
-                        await send_ch_msg(CH_LOG, msg)
-                        await asyncio.sleep(.3)
                     curr_trains[player.train_id].discord_id = player.discord_id
                     curr_trains[player.train_id].engineer = player.discord_name
                     curr_trains[player.train_id].job_thread = player.job_thread
