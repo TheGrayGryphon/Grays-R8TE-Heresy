@@ -257,7 +257,7 @@ def prettify(msg):
     max_c2 = 0
     max_c3 = 0
     max_c4 = 0
-    return_msg = header + '\n```'
+    return_msg = header + '```'
     lines = body.split('\n')
     for line in lines:
         if '|' in line:
@@ -850,8 +850,6 @@ def run_discord_bot():
                     new_content = (msg_obj.content[:-3] +
                                    f'\n{ctx.author.display_name} | CLOCK_OUT | '
                                    f'{last_world_datetime} | {time_worked}```')
-                    new_message = prettify(new_content)
-                    await msg_obj.edit(content=new_message)
                     # Create database entry
                     job_name = ledger_thread.name.split('|')[1].strip()
                     db_entry = (f'{ctx.author.id},{ctx.author.display_name},COMPLETE,{last_world_datetime},'
@@ -885,6 +883,8 @@ def run_discord_bot():
                     new_content = (msg_obj.content[:-3] +
                                    f'\n{ctx.author.display_name} | CLOCK_OUT | '
                                    f'{last_world_datetime} | {time_worked}```')
+
+
                     # Create database entry
                     job_name = ledger_thread.name.split('|')[1].strip()
                     db_entry = (f'{ctx.author.id},{ctx.author.display_name},TIE_DOWN,{last_world_datetime},'
@@ -901,23 +901,23 @@ def run_discord_bot():
                 for time_increment in employee[ctx.author.display_name]:
                     total += time_increment
                 msg += f'\n{ctx.author.display_name} has accrued {round(total, 2)} hours on this job.'
+                new_message = prettify(new_content)
                 if job_complete:
                     # Since job has completed, we also sum all the work done and update the job ledger
                     total_time = 0
-                    new_content = new_content[:-3] + '\n\n---- Job complete, effort summary below ----'
+                    new_message = new_message[:-3] + '\n\n---- Job complete, effort summary below ----'
                     name_len = len(max(employee, key=len))
                     for key in employee.keys():
                         employee_time = 0
                         for time_worked in employee[key]:
                             employee_time += time_worked
                             total_time += time_worked
-                        new_content += f'\n{key: <{name_len}}: {round(employee_time, 2)} hours'
-                    new_content += f'\n\nTotal time worked on this job: {round(total_time, 2)} hours```'
+                        new_message += f'\n{key: <{name_len}}: {round(employee_time, 2)} hours'
+                    new_message += f'\n\nTotal time worked on this job: {round(total_time, 2)} hours```'
                     job_num = ledger_thread.name.split('|')[0].strip()
                     job_entry = f'{job_name.replace(","," ")},{job_num},{last_world_datetime},{round(total_time, 2)}'
                     write_record(JOB_DB_FILENAME, job_entry)
-
-                await msg_obj.edit(content=new_content)
+                await msg_obj.edit(content=new_message)
                 await thread.send(msg)
                 await thread.edit(applied_tags=current_tags)
                 await ledger_thread.send(embed=embed_msg)
