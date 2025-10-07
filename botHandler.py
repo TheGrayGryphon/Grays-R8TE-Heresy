@@ -1110,15 +1110,17 @@ def run_discord_bot():
             # Look for and archive player trains and capture existing player records
             player_updates = list()
             for player in players.values():
-                player_updates.append([player.discord_id, player.discord_name, player.train_symbol,
-                                       player.train_id, player.job_thread])
+                player_updates.append([player.discord_id,       # 0
+                                       player.discord_name,     # 1
+                                       player.train_symbol,     # 2
+                                       player.train_id,         # 3
+                                       player.job_thread])      # 4
             msg += f'...Found {len(player_updates)} players crewing trains.'
             for player in player_updates:
                 msg += f'\n....{player[1]} : {player[2]} [{player[3]}]'
-            print(msg)
             await send_ch_msg(CH_LOG, msg)
             await asyncio.sleep(.3)
-            players.clear()
+            players.clear()     # Clear out the players dict; it will be repopulated below
             # Repopulate trains
             last_worlds_save_modified_time = os.stat(SAVENAME).st_mtime  # Time
             last_world_datetime, error_status = update_world_state(last_world_datetime, curr_trains)
@@ -1128,35 +1130,38 @@ def run_discord_bot():
                 await send_ch_msg(CH_LOG, msg)
             # Re-add players
             for player in player_updates:
-                tid = find_tid(player[2], curr_trains)
-                if tid < 0:  # Current train symbol is not found; perhaps lead loco is 'backwards' or train was removed
-                    if player[3] in curr_trains:
-                        tid = player[3]
-                        msg = (f'Invalid player {player[1]} train id returned for find_tid({player[2]}) '
-                               f'so resorting to archived tid of {player[3]}')
-                    else:
-                        tid = -1  # Can't find this train, so prevent from trying to crew it
-                        msg = (f'Train {player[2]}[{player[3]}] not found;'
-                               f' removing crew status for player {player[1]}')
-                        # Send message in job thread notifying player of the problem
-                        player_msg = (f'{player[0]}, during a server reboot your job status for {player[2]} was lost.'
-                                      f' Please notify staff (former TID = {player[3]}).')
-                        forum_thread = await bot.fetch_channel(player[4])
-                        await send_ch_msg(forum_thread, player_msg)
+                tid = find_tid(player[2], curr_trains)  # Find new TID for previously crewed train
+                if tid < 0:  # Can't find this train, so remove crewed status and notify user
+                    msg = (f'During server reboot, player train {player[2]}[{player[3]}] not found;'
+                           f' removing crew status for player {player[1]}')
+                    # Send message in job thread notifying player of the problem
+                    player_msg = (f'<#{player[0]}>, during a server reboot your job status '
+                                  f'for {player[2]} was lost. Please notify staff (former TID = {player[3]}).\n\n')
+                    player_msg += (f'**STAFF** : Please check status of player crew and jobs being worked.\n'
+                                   f'*{player[1]}* should not be listed as crewing a train, nor working a job.\n'
+                                   f'You will likely need to manually reset the tags for this job post.\n'
+                                   f'Relevant commands: `/r8te_list_trains player` and `/r8te_list_jobs`')
+                    forum_thread = await bot.fetch_channel(player[4])
+                    try:
+                        del working_jobs[player[4]]     # Remove from job queue
+                    except KeyError:
+                        pass
+                    await send_ch_msg(forum_thread, player_msg)
+                    await asyncio.sleep(.3)
+                    if player[3] in watched_trains:
+                        # This train has a watch on it - time to remove, and strike-thru previous alert messages
+                        # We are a bit redundant here as the server restart handler will strike through all messages,
+                        # but we also want to clear out the watched_trains entry.
+                        remove_msg = (
+                            f' {GREEN_CIRCLE} {last_world_datetime} **SERVER HICCUP**: Train {player[2]}'
+                            f' ({tid}) has been removed after a server restart.')
+                        await strike_alert_msgs(CH_ALERT, player[3], remove_msg)
                         await asyncio.sleep(.3)
-                        if player[3] in watched_trains:
-                            # This train has a watch on it - time to remove, and strike-thru previous alert messages
-                            # We are a bit redundant here as the server restart handler will strike through all messages,
-                            # but we also want to clear out the watched_trains entry.
-                            remove_msg = (
-                                f' {GREEN_CIRCLE} {last_world_datetime} **SERVER HICCUP**: Train {player[2]}'
-                                f' ({tid}) has been removed after a server restart.')
-                            await strike_alert_msgs(CH_ALERT, player[3], remove_msg)
-                            await asyncio.sleep(.3)
-                            del watched_trains[player[3]]  # No longer need to watch
+                        del watched_trains[player[3]]  # No longer need to watch
                     await send_ch_msg(CH_LOG, msg)
                     await asyncio.sleep(.3)
-                if tid > 0:
+
+                else:
                     player_crew_train(curr_trains, tid, player[0], player[1], player[4],
                                       last_world_datetime)
             player_updates.clear()
