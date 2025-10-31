@@ -245,7 +245,7 @@ def duplicate_symbol(trains, symbol):
 
 
 def log_msg(msg):
-    with open(LOG_FILENAME, 'a') as fp:
+    with open(LOG_FILENAME, 'a', encoding='utf-8') as fp:
         fp.write(msg + '\n')
 
 
