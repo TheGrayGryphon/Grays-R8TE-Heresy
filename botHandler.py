@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import glob
 import os
+from typing import Union
 from r8teInclude import (WORLDSAVE_PATH, AEI_PATH, LOG_FILENAME, AI_ALERT_TIME, PLAYER_ALERT_TIME, PLAYER_DB_FILENAME,
                          JOB_DB_FILENAME, REMINDER_TIME, BOT_TOKEN, CH_LOG, CH_ALERT, CH_DETECTOR, CREWED_TAG,
                          COMPLETED_TAG, AVAILABLE_TAG, STAFF_TAG, LOCATION_DB, SCAN_TIME, IGNORED_TAGS, REBOOT_TIME,
@@ -443,30 +444,60 @@ def run_discord_bot():
         msg += f'` in channel *{ctx.channel}*   :eyes:'
         await send_ch_msg(CH_LOG, msg)
 
+    async def change_thread_tags(ctx: discord.ApplicationContext,
+                                 tags_to_add: list, tags_to_remove: list | str | None = 'None'):
+        thread = ctx.channel
+        if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
+            await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
+            # Is it kosher for this function to write straight into the thread?
+            return -1   # Indicate an error occurred
+        forum_channel = thread.parent
+        current_tags = thread.applied_tags or []
+
+        # Get the id(s) of the tags to add
+        if isinstance(tags_to_remove, list):
+            for tag in tags_to_remove:
+                check_tag = discord.utils.find(lambda t: t.name.lower() == tag.lower(), forum_channel.available_tags)
+                if not check_tag:
+                    await ctx.respond(f'[r8TE] **ERROR**: Tag `{check_tag}` not found in this forum.', ephemeral=True)
+                    return -1
+                else:
+                    if check_tag in current_tags:
+                        current_tags.remove(check_tag)
+        elif tags_to_remove.lower() == 'all':
+            current_tags.clear()    # Calling code wants to delete all current tags
+        # Else don't remove any
+        for tag in tags_to_add:
+            check_tag = discord.utils.find(lambda t: t.name.lower() == tag.lower(), forum_channel.available_tags)
+            if not check_tag:
+                await ctx.respond(f'[r8TE] **ERROR**: Tag `{check_tag}` not found in this forum.', ephemeral=True)
+                return -1
+            else:
+                if check_tag not in current_tags:
+                    current_tags.append(check_tag)
+        try:
+            await thread.edit(applied_tags=current_tags)
+
+        except discord.Forbidden:
+            await ctx.respond('[r8TE] **ERROR**: I do not have permission to edit this thread.', ephemeral=True)
+        except Exception as e:
+            await ctx.respond(f'[r8TE] **ERROR**: {e}', ephemeral=True)
+
     @bot.slash_command(name='mark_available', description="Mark job as Available")
     @option("loco_num", description="Lead loco number", required=True)
     @option("location", description="Train location", required=True)
     @option("train_symbol", description="Train symbol", required=False)
     @option("train_info", description="Train info (", required=False)
-    # NOTE: This command must be executed within a forum thread
     async def mark_available(ctx: discord.ApplicationContext, loco_num: str, location: str,
                              train_symbol: str, train_info: str):
         global last_world_datetime
         global working_jobs
 
         thread = ctx.channel
-        # thread_id = ctx.channel.id
-        # thread_name = ctx.channel.name
         if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
             await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
             return
-        # thread_name = ctx.channel.name
-        forum_channel = thread.parent
-
-        tag_to_add = discord.utils.find(lambda t: t.name.lower() == AVAILABLE_TAG.lower(), forum_channel.available_tags)
-        if not tag_to_add:
-            await ctx.respond(f'[r8TE] **ERROR**: Tag `{AVAILABLE_TAG}` not found in this forum.', ephemeral=True)
-            return
+        await change_thread_tags(ctx, [AVAILABLE_TAG],'ALL')
         symbol_msg = 'Train symbol'
         num_msg = 'Lead loco number'
         info_msg = 'Train info'
@@ -482,7 +513,6 @@ def run_discord_bot():
         job_post += f'{location_msg: <{txt_len}} : {location}\n'
         job_post += '```'
         try:
-            await thread.edit(applied_tags=[tag_to_add])  # This will remove all tags except AVAILABLE_TAG
             await ctx.respond(job_post, ephemeral=False)
 
         except discord.Forbidden:
@@ -492,7 +522,7 @@ def run_discord_bot():
 
     @bot.slash_command(name='staff_help', description="Mark job as needing staff attention")
     @option("note", description="Describe the issue", required=False)
-    # NOTE: This command must be executed within a forum thread
+
     async def staff_help(ctx: discord.ApplicationContext, note: str):
         global last_world_datetime
         global working_jobs
@@ -505,18 +535,14 @@ def run_discord_bot():
             return
         # thread_name = ctx.channel.name
         forum_channel = thread.parent
+        await change_thread_tags(ctx, [STAFF_TAG],'ALL')
 
-        tag_to_add = discord.utils.find(lambda t: t.name.lower() == STAFF_TAG.lower(), forum_channel.available_tags)
-        if not tag_to_add:
-            await ctx.respond(f'[r8TE] **ERROR**: Tag `{STAFF_TAG}` not found in this forum.', ephemeral=True)
-            return
         help_post = f'```ansi\n\u001b[2;31m'
         help_post += f'USER {ctx.author.display_name} HAS MARKED THIS JOB AS NEEDING STAFF ATTENTION'
         if note:
             help_post += f'\nNote(s): {note}'
         help_post += '\n\u001b[0m```'
         try:
-            await thread.edit(applied_tags=[tag_to_add])  # This will remove all tags except AVAILABLE_TAG
             await ctx.respond(help_post, ephemeral=False)
 
         except discord.Forbidden:
@@ -532,7 +558,6 @@ def run_discord_bot():
 
     @bot.slash_command(name='crew', description=f"Crew a train")
     @option("symbol", description="Train symbol", required=True)
-    # NOTE: This command must be executed within a forum thread
     async def crew(ctx: discord.ApplicationContext, symbol: str):
         global last_world_datetime
         global working_jobs
@@ -540,24 +565,11 @@ def run_discord_bot():
         thread = ctx.channel
         thread_id = ctx.channel.id
         thread_name = ctx.channel.name
+
         if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
             await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
             return
-        thread_name = ctx.channel.name
-        forum_channel = thread.parent
 
-        tag_to_add = discord.utils.find(lambda t: t.name.lower() == CREWED_TAG.lower(), forum_channel.available_tags)
-        tag_to_remove = discord.utils.find(lambda t: t.name.lower() == AVAILABLE_TAG.lower(),
-                                           forum_channel.available_tags)
-        if not tag_to_add or not tag_to_remove:
-            await ctx.respond(f'[r8TE] **ERROR**: Tag `{CREWED_TAG}` and/or {AVAILABLE_TAG} not found in this forum.'
-                              , ephemeral=True)
-            return
-        current_tags = thread.applied_tags or []
-        if tag_to_add in current_tags:
-            if not any(tag in symbol.lower() for tag in IGNORED_TAGS):
-                await ctx.respond(f'This job is already marked `{tag_to_add.name}` - unable to crew.', ephemeral=True)
-                return
         try:
             await ctx.respond(f'Attempting to crew train {symbol}', ephemeral=True)
             nbr_of_symbols = duplicate_symbol(curr_trains, symbol)
@@ -566,18 +578,13 @@ def run_discord_bot():
                                   f'found on {nbr_of_symbols} trains.', ephemeral=True)
                 return
             tid = find_tid(symbol, curr_trains)
-            if tid != -1:
+            if tid != -1:   # Train ID found
                 if curr_trains[tid].engineer.lower() == 'none':
                     if player_crew_train(curr_trains, tid, ctx.author.id, ctx.author.display_name, thread_id,
                                          last_world_datetime) < 0:
                         await ctx.respond(f'**UNABLE TO CREW** : You are currently listed as crewing'
                                           f' [{players[ctx.author.mention].train_symbol}]**', ephemeral=True)
                         return
-                    if tag_to_add not in current_tags:
-                        current_tags.append(tag_to_add)
-                    if tag_to_remove in current_tags:
-                        current_tags.remove(tag_to_remove)
-
                     try:
                         working_jobs[thread_id].crew.append(ctx.author.display_name)
                     except KeyError:
@@ -588,19 +595,23 @@ def run_discord_bot():
                         msg += f'crewed {curr_trains[tid].symbol}, assisting on job: *{thread_name}*'
                     else:
                         msg += f'crewed {curr_trains[tid].symbol}, working job: *{thread_name}*'
-                    await thread.edit(applied_tags=current_tags)
+                    await change_thread_tags(ctx, [CREWED_TAG], [AVAILABLE_TAG])
                     await thread.send(msg)
                     # Update job ledger; First see if we have already created a ledger entry
-                    jobid = None
-                    async for message in thread.history(limit=None):
-                        if 'JOBID#' in message.content:  # Look through messages within this thread looking for keyword
-                            jobid = message.content.split('`')[1]
-                    if jobid:
+                    job_name = None
+                    async for message in thread.history(limit=None):    # Walk through thread looking for ledger entry
+                        if 'JOBID#' in message.content:
+                            job_name = message.content.split('JOBID# `')[1].split('`')[0]
+                    if job_name:
                         ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
-                        ledger_thread = thread  # Just in case we can't find the job thread
+                        ledger_thread = None  # Just in case we can't find the job thread
                         for test_thread in ledger_channel.threads:
-                            if test_thread.name == jobid:
+                            if test_thread.name == job_name:
                                 ledger_thread = test_thread
+                        if ledger_thread is None:
+                            err_msg = (f'[r8TE JOB ADMIN] **Error crewing job** : JobID [{job_name}] found, '
+                                       f'but no associated thread found.')
+                            await thread.send(err_msg)
                     else:  # No existing job ID thread found, so make a new one
                         ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
                         job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
@@ -644,16 +655,6 @@ def run_discord_bot():
         if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
             await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
             return
-        forum_channel = thread.parent
-        tag_to_add = discord.utils.find(lambda t: t.name.lower() == AVAILABLE_TAG.lower(), forum_channel.available_tags)
-        tag_to_remove = discord.utils.find(lambda t: t.name.lower() == CREWED_TAG.lower(), forum_channel.available_tags)
-        if not tag_to_add or not tag_to_remove:
-            await ctx.respond(f'[r8TE] **ERROR**: Tag `{CREWED_TAG}` and/or `{AVAILABLE_TAG}` not found in this forum.'
-                              , ephemeral=True)
-        current_tags = thread.applied_tags or []
-        if tag_to_remove not in current_tags:
-            await ctx.respond(f'Tag **{tag_to_remove.name}** is not currently applied.', ephemeral=True)
-            return
         try:
             await ctx.respond(f'Attempting to tie down', ephemeral=True)
             if ctx.author.id in players:
@@ -669,10 +670,6 @@ def run_discord_bot():
                 # Check to see if this is a multi-crewed job
                 if len(working_jobs[thread_id].crew) < 2:
                     # Single crew train
-                    if tag_to_add not in current_tags:
-                        current_tags.append(tag_to_add)
-                    if tag_to_remove in current_tags:
-                        current_tags.remove(tag_to_remove)
                     msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
                            f'{curr_trains[tid].symbol} at {location}\nTime worked: {time_worked} hours')
                     del working_jobs[thread_id]
@@ -694,17 +691,20 @@ def run_discord_bot():
                     await asyncio.sleep(.3)
                     del watched_trains[tid]  # No longer need to watch
                 # Update job ledger; First see if we have already created a ledger entry
-                jobid = None
-                async for message in thread.history(limit=None):
-                    if 'JOBID#' in message.content:  # Look through messages within this thread looking for keyword
-                        jobid = message.content.split('`')[1]
-
-                if jobid:
+                job_name = None
+                async for message in thread.history(limit=None):  # Walk through thread looking for ledger entry
+                    if 'JOBID#' in message.content:
+                        job_name = message.content.split('JOBID# `')[1].split('`')[0]
+                if job_name:
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
-                    ledger_thread = thread  # Just in case we can't find the job thread
+                    ledger_thread = None  # Just in case we can't find the job thread
                     for test_thread in ledger_channel.threads:
-                        if test_thread.name == jobid:
+                        if test_thread.name == job_name:
                             ledger_thread = test_thread
+                    if ledger_thread is None:
+                        err_msg = (f'[r8TE JOB ADMIN] **Error tying down job** : JobID [{job_name}] found, '
+                                   f'but no associated thread found.')
+                        await thread.send(err_msg)
                 else:  # No existing job ID thread found, so make a new one
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
                     job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
@@ -745,7 +745,7 @@ def run_discord_bot():
                             f'{job_name.replace(","," ")},{time_worked}')
                 write_record(PLAYER_DB_FILENAME, db_entry)
                 await thread.send(msg)
-                await thread.edit(applied_tags=current_tags)
+                await change_thread_tags(ctx, [AVAILABLE_TAG], [CREWED_TAG])
 
                 return
             else:
@@ -760,30 +760,13 @@ def run_discord_bot():
 
     @bot.slash_command(name='complete', description=f"Mark a job complete")
     @option('notes', description='completion notes', required=False)
-    # NOTE: This command must be executed within a forum thread
+
     async def complete(ctx: discord.ApplicationContext, notes: str):
         thread = ctx.channel
         thread_id = ctx.channel.id
         thread_name = ctx.channel.name
         if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
             await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
-            return
-        forum_channel = thread.parent
-        tag_to_add = discord.utils.find(lambda t: t.name.lower() == COMPLETED_TAG.lower(), forum_channel.available_tags)
-        tag1_to_remove = discord.utils.find(lambda t: t.name.lower() == CREWED_TAG.lower(),
-                                            forum_channel.available_tags)
-        tag2_to_remove = discord.utils.find(lambda t: t.name.lower() == AVAILABLE_TAG.lower(),
-                                            forum_channel.available_tags)
-        if not tag_to_add or not tag1_to_remove or not tag2_to_remove:
-            await ctx.respond(f'[r8TE] **ERROR**: Tag `{CREWED_TAG}` and/or `{AVAILABLE_TAG}` and/or {COMPLETED_TAG}'
-                              f' not found in this forum.', ephemeral=True)
-            return
-        current_tags = thread.applied_tags or []
-        if tag_to_add in current_tags:  # Is this already marked complete?
-            await ctx.respond(f'This job is already marked `{tag_to_add.name}` - unable to change.', ephemeral=True)
-            return
-        elif tag1_to_remove not in current_tags:  # Make sure this is currently a job in progress
-            await ctx.respond(f'You can only `/complete` a job which is currently being crewed.', ephemeral=True)
             return
         try:
             await ctx.respond(f'Attempting to mark *{working_jobs[thread_id].name}* as complete.', ephemeral=True)
@@ -799,20 +782,25 @@ def run_discord_bot():
                 del players[ctx.author.id]  # Remove this player record
                 time_worked = round((last_world_datetime - start_time).total_seconds() / 3600, 1)
                 # Update job ledger; First see if we have already created a ledger entry
-                jobid = None
-                async for message in thread.history(limit=None):
-                    if 'JOBID#' in message.content:  # Look through messages within this thread looking for keyword
-                        jobid = message.content.split('`')[1]
-                        ledger_link = message.content.split('`')[2]
+                job_name = None
+                async for message in thread.history(limit=None):  # Walk through thread looking for ledger entry
+                    if 'JOBID#' in message.content:
+                        job_name = message.content.split('JOBID# `')[1].split('`')[0]
+                        ledger_link = message.content.split('JOBID# `')[1].split('`')[1]
                         # Replace this message since this job will no longer be worked
-                        new_message = f'[r8TE JOB ADMIN] {last_world_datetime} JOB COMPLETE {jobid} {ledger_link}'
+                        new_message = f'[r8TE JOB ADMIN] {last_world_datetime} JOB COMPLETE {job_name} {ledger_link}'
                         await message.edit(content=new_message)
-                if jobid:
+                if job_name:
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
-                    ledger_thread = thread  # Just in case we can't find the job thread
+                    ledger_thread = None  # Just in case we can't find the job thread
                     for test_thread in ledger_channel.threads:
-                        if test_thread.name == jobid:
+                        if test_thread.name == job_name:
                             ledger_thread = test_thread
+                    if ledger_thread is None:
+                        err_msg = (f'[r8TE JOB ADMIN] **Error completing job** : JobID [{job_name}] found, '
+                                   f'but no associated thread found.')
+                        await thread.send(err_msg)
+
                 else:  # No existing job ID thread found, so make a new one
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
                     job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
@@ -828,12 +816,6 @@ def run_discord_bot():
                 # Check to see if this is a multi-crewed job, if so we are really just tying down
                 if len(working_jobs[thread_id].crew) < 2:
                     # Single crew train
-                    if tag_to_add not in current_tags:
-                        current_tags.append(tag_to_add)
-                    if tag1_to_remove in current_tags:
-                        current_tags.remove(tag1_to_remove)
-                    if tag2_to_remove in current_tags:
-                        current_tags.remove(tag2_to_remove)
                     msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
                            f'{curr_trains[tid].symbol}, and marked job '
                            f'*{working_jobs[thread_id].name}* `{COMPLETED_TAG}`\nTime worked: {time_worked} hours')
@@ -857,9 +839,9 @@ def run_discord_bot():
                     write_record(PLAYER_DB_FILENAME, db_entry)
                     del working_jobs[thread_id]
                     job_complete = True
-
+                    await change_thread_tags(ctx, [COMPLETED_TAG], 'ALL')
                 else:
-                    # Multi-crew train, so tie down instead
+                    # Multi-crew, so tie down instead - no need to change thread tags
                     working_jobs[thread_id].crew.remove(ctx.author.display_name)  # Remove player from job list
                     msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
                            f'{curr_trains[tid].symbol}\nTime worked: {time_worked} hours\n'
@@ -883,8 +865,6 @@ def run_discord_bot():
                     new_content = (msg_obj.content[:-3] +
                                    f'\n{ctx.author.display_name} | CLOCK_OUT | '
                                    f'{last_world_datetime} | {time_worked}```')
-
-
                     # Create database entry
                     job_name = ledger_thread.name.split('|')[1].strip()
                     db_entry = (f'{ctx.author.id},{ctx.author.display_name},TIE_DOWN,{last_world_datetime},'
@@ -919,7 +899,6 @@ def run_discord_bot():
                     write_record(JOB_DB_FILENAME, job_entry)
                 await msg_obj.edit(content=new_message)
                 await thread.send(msg)
-                await thread.edit(applied_tags=current_tags)
                 await ledger_thread.send(embed=embed_msg)
                 if tid in watched_trains:
                     # This train has a watch on it - time to remove, and strike-thru previous alert messages
