@@ -578,7 +578,7 @@ def run_discord_bot():
                                   f'found on {nbr_of_symbols} trains.', ephemeral=True)
                 return
             tid = find_tid(symbol, curr_trains)
-            if tid != -1:
+            if tid != -1:   # Train ID found
                 if curr_trains[tid].engineer.lower() == 'none':
                     if player_crew_train(curr_trains, tid, ctx.author.id, ctx.author.display_name, thread_id,
                                          last_world_datetime) < 0:
@@ -598,18 +598,18 @@ def run_discord_bot():
                     await change_thread_tags(ctx, [CREWED_TAG], [AVAILABLE_TAG])
                     await thread.send(msg)
                     # Update job ledger; First see if we have already created a ledger entry
-                    jobid = None
-                    async for message in thread.history(limit=None):
-                        if 'JOBID#' in message.content:  # Look through messages within this thread looking for keyword
-                            jobid = message.content.split('`')[1]
-                    if jobid:
+                    job_name = None
+                    async for message in thread.history(limit=None):    # Walk through thread looking for ledger entry
+                        if 'JOBID#' in message.content:
+                            job_name = message.content.split('JOBID# `')[1].split('`')[0]
+                    if job_name:
                         ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
                         ledger_thread = None  # Just in case we can't find the job thread
                         for test_thread in ledger_channel.threads:
-                            if test_thread.name == jobid:
+                            if test_thread.name == job_name:
                                 ledger_thread = test_thread
                         if ledger_thread is None:
-                            err_msg = (f'[r8TE JOB ADMIN] **Error crewing job** : JobID [{jobid}] found, '
+                            err_msg = (f'[r8TE JOB ADMIN] **Error crewing job** : JobID [{job_name}] found, '
                                        f'but no associated thread found.')
                             await thread.send(err_msg)
                     else:  # No existing job ID thread found, so make a new one
@@ -691,18 +691,18 @@ def run_discord_bot():
                     await asyncio.sleep(.3)
                     del watched_trains[tid]  # No longer need to watch
                 # Update job ledger; First see if we have already created a ledger entry
-                jobid = None
-                async for message in thread.history(limit=None):
-                    if 'JOBID#' in message.content:  # Look through messages within this thread looking for keyword
-                        jobid = message.content.split('`')[1]
-                if jobid:
+                job_name = None
+                async for message in thread.history(limit=None):  # Walk through thread looking for ledger entry
+                    if 'JOBID#' in message.content:
+                        job_name = message.content.split('JOBID# `')[1].split('`')[0]
+                if job_name:
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
                     ledger_thread = None  # Just in case we can't find the job thread
                     for test_thread in ledger_channel.threads:
-                        if test_thread.name == jobid:
+                        if test_thread.name == job_name:
                             ledger_thread = test_thread
                     if ledger_thread is None:
-                        err_msg = (f'[r8TE JOB ADMIN] **Error tying down job** : JobID [{jobid}] found, '
+                        err_msg = (f'[r8TE JOB ADMIN] **Error tying down job** : JobID [{job_name}] found, '
                                    f'but no associated thread found.')
                         await thread.send(err_msg)
                 else:  # No existing job ID thread found, so make a new one
@@ -782,22 +782,22 @@ def run_discord_bot():
                 del players[ctx.author.id]  # Remove this player record
                 time_worked = round((last_world_datetime - start_time).total_seconds() / 3600, 1)
                 # Update job ledger; First see if we have already created a ledger entry
-                jobid = None
-                async for message in thread.history(limit=None):
-                    if 'JOBID#' in message.content:  # Look through messages within this thread looking for keyword
-                        jobid = message.content.split('`')[1]
-                        ledger_link = message.content.split('`')[2]
+                job_name = None
+                async for message in thread.history(limit=None):  # Walk through thread looking for ledger entry
+                    if 'JOBID#' in message.content:
+                        job_name = message.content.split('JOBID# `')[1].split('`')[0]
+                        ledger_link = message.content.split('JOBID# `')[1].split('`')[1]
                         # Replace this message since this job will no longer be worked
-                        new_message = f'[r8TE JOB ADMIN] {last_world_datetime} JOB COMPLETE {jobid} {ledger_link}'
+                        new_message = f'[r8TE JOB ADMIN] {last_world_datetime} JOB COMPLETE {job_name} {ledger_link}'
                         await message.edit(content=new_message)
-                if jobid:
+                if job_name:
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
                     ledger_thread = None  # Just in case we can't find the job thread
                     for test_thread in ledger_channel.threads:
-                        if test_thread.name == jobid:
+                        if test_thread.name == job_name:
                             ledger_thread = test_thread
                     if ledger_thread is None:
-                        err_msg = (f'[r8TE JOB ADMIN] **Error completing job** : JobID [{jobid}] found, '
+                        err_msg = (f'[r8TE JOB ADMIN] **Error completing job** : JobID [{job_name}] found, '
                                    f'but no associated thread found.')
                         await thread.send(err_msg)
 
