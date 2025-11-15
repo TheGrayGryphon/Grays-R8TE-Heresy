@@ -564,10 +564,11 @@ def run_discord_bot():
 
         thread = ctx.channel
         thread_id = ctx.channel.id
+        thread_name = ctx.channel.name
+
         if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
             await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
             return
-        thread_name = ctx.channel.name
 
         try:
             await ctx.respond(f'Attempting to crew train {symbol}', ephemeral=True)
@@ -603,10 +604,14 @@ def run_discord_bot():
                             jobid = message.content.split('`')[1]
                     if jobid:
                         ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
-                        ledger_thread = thread  # Just in case we can't find the job thread
+                        ledger_thread = None  # Just in case we can't find the job thread
                         for test_thread in ledger_channel.threads:
                             if test_thread.name == jobid:
                                 ledger_thread = test_thread
+                        if ledger_thread is None:
+                            err_msg = (f'[r8TE JOB ADMIN] **Error crewing job** : JobID [{jobid}] found, '
+                                       f'but no associated thread found.')
+                            await thread.send(err_msg)
                     else:  # No existing job ID thread found, so make a new one
                         ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
                         job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
@@ -690,13 +695,16 @@ def run_discord_bot():
                 async for message in thread.history(limit=None):
                     if 'JOBID#' in message.content:  # Look through messages within this thread looking for keyword
                         jobid = message.content.split('`')[1]
-
                 if jobid:
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
-                    ledger_thread = thread  # Just in case we can't find the job thread
+                    ledger_thread = None  # Just in case we can't find the job thread
                     for test_thread in ledger_channel.threads:
                         if test_thread.name == jobid:
                             ledger_thread = test_thread
+                    if ledger_thread is None:
+                        err_msg = (f'[r8TE JOB ADMIN] **Error tying down job** : JobID [{jobid}] found, '
+                                   f'but no associated thread found.')
+                        await thread.send(err_msg)
                 else:  # No existing job ID thread found, so make a new one
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
                     job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
@@ -784,10 +792,15 @@ def run_discord_bot():
                         await message.edit(content=new_message)
                 if jobid:
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
-                    ledger_thread = thread  # Just in case we can't find the job thread
+                    ledger_thread = None  # Just in case we can't find the job thread
                     for test_thread in ledger_channel.threads:
                         if test_thread.name == jobid:
                             ledger_thread = test_thread
+                    if ledger_thread is None:
+                        err_msg = (f'[r8TE JOB ADMIN] **Error completing job** : JobID [{jobid}] found, '
+                                   f'but no associated thread found.')
+                        await thread.send(err_msg)
+
                 else:  # No existing job ID thread found, so make a new one
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
                     job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
