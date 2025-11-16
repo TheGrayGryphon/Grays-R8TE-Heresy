@@ -1,6 +1,6 @@
 import configparser
 
-VERSION = '15Nov25BETA'
+VERSION = '16Nov25'
 CONFIG_FILE = 'r8te.cfg'
 
 
@@ -291,7 +291,8 @@ try:
     RED_EXCLAMATION = f":{config['discord']['reminder_emoji']}:"
     GREEN_CIRCLE = f":{config['discord']['moving_emoji']}:"
     AXE = f":{config['discord']['deleted_emoji']}:"
-    JOB_TRACK_THREAD = config['discord']['job_track_thread']
+    JOB_TRACK_FORUM = config['discord']['job_track_forum']
+    JOB_POST_FORUM = config['discord']['job_post_forum']
 
     LOCATION_DB = {100: 'Mojave',
                    110: 'Needles',
