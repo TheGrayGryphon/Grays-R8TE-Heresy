@@ -5,7 +5,7 @@ import discord  # noqa This libray is covered in py-cord
 from discord.ext import tasks  # noqa This libray is covered in py-cord
 from discord import option  # noqa This libray is covered in py-cord
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import glob
 import os
 from typing import Union
@@ -13,7 +13,7 @@ from r8teInclude import (WORLDSAVE_PATH, AEI_PATH, LOG_FILENAME, AI_ALERT_TIME, 
                          JOB_DB_FILENAME, REMINDER_TIME, BOT_TOKEN, CH_LOG, CH_ALERT, CH_DETECTOR, CREWED_TAG,
                          COMPLETED_TAG, AVAILABLE_TAG, STAFF_TAG, LOCATION_DB, SCAN_TIME, IGNORED_TAGS, REBOOT_TIME,
                          PLAYER_RESPAWN_TIME, RED_SQUARE, RED_EXCLAMATION, GREEN_CIRCLE, AXE, TRACK_AI_DD,
-                         JOB_TRACK_THREAD, STATUS_REPORT_TIME, VERSION)
+                         JOB_TRACK_FORUM, JOB_POST_FORUM, STATUS_REPORT_TIME, VERSION)
 
 
 from r8teInclude import Car, Cut, Train, Player, AeiReport, CarReport, Job, DeletedTrainWatch
@@ -603,7 +603,7 @@ def run_discord_bot():
                         if 'JOBID#' in message.content:
                             job_name = message.content.split('JOBID# `')[1].split('`')[0]
                     if job_name:
-                        ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
+                        ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_FORUM)
                         ledger_thread = None  # Just in case we can't find the job thread
                         for test_thread in ledger_channel.threads:
                             if test_thread.name == job_name:
@@ -613,7 +613,7 @@ def run_discord_bot():
                                        f'but no associated thread found.')
                             await thread.send(err_msg)
                     else:  # No existing job ID thread found, so make a new one
-                        ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
+                        ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_FORUM)
                         job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
                         job_id += f' | {thread_name}'
                         content = f'Job Title: {thread_name}\n Link: <#{thread.id}>\n\n'
@@ -696,7 +696,7 @@ def run_discord_bot():
                     if 'JOBID#' in message.content:
                         job_name = message.content.split('JOBID# `')[1].split('`')[0]
                 if job_name:
-                    ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
+                    ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_FORUM)
                     ledger_thread = None  # Just in case we can't find the job thread
                     for test_thread in ledger_channel.threads:
                         if test_thread.name == job_name:
@@ -706,7 +706,7 @@ def run_discord_bot():
                                    f'but no associated thread found.')
                         await thread.send(err_msg)
                 else:  # No existing job ID thread found, so make a new one
-                    ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
+                    ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_FORUM)
                     job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
                     job_id += f' | {thread_name}'
                     content = f'Job Title: {thread_name}\n Link: <#{thread.id}>\n\n'
@@ -791,7 +791,7 @@ def run_discord_bot():
                         new_message = f'[r8TE JOB ADMIN] {last_world_datetime} JOB COMPLETE {job_name} {ledger_link}'
                         await message.edit(content=new_message)
                 if job_name:
-                    ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
+                    ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_FORUM)
                     ledger_thread = None  # Just in case we can't find the job thread
                     for test_thread in ledger_channel.threads:
                         if test_thread.name == job_name:
@@ -802,7 +802,7 @@ def run_discord_bot():
                         await thread.send(err_msg)
 
                 else:  # No existing job ID thread found, so make a new one
-                    ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_THREAD)
+                    ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_FORUM)
                     job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
                     job_id += f' | {thread_name}'
                     content = f'Job Title: {thread_name}\n Link: <#{thread.id}>\n\n'
@@ -1441,6 +1441,69 @@ def run_discord_bot():
         if len(updated_files) > 0:
             detector_file_time = updated_file_time
 
+    @tasks.loop(hours=12)
+    async def cleanup_detector_messages():
+        keyword = cleanup_detector_messages.keyword
+        days_old = cleanup_detector_messages.days_old
+
+        # Try to locate the forum channel by name across all guilds
+        forum_channel = None
+        for guild in bot.guilds:
+            for channel in guild.channels:
+                if isinstance(channel, discord.ForumChannel) and channel.name == JOB_POST_FORUM:
+                    forum_channel = channel
+                    break
+            if forum_channel:
+                break
+
+        if forum_channel is None:
+            stat_msg = f'[R8TE CLEANUP DETECTOR MESSAGES] : Forum named "{JOB_POST_FORUM}" not found'
+            await send_ch_msg(CH_LOG, stat_msg)
+            await asyncio.sleep(.3)
+            return
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days_old)
+        stat_msg = (f'[R8TE CLEANUP DETECTOR MESSAGES] Scanning {JOB_POST_FORUM} keyword="{keyword}", '
+               f'days_old={days_old}, cutoff={cutoff}')
+        await send_ch_msg(CH_LOG, stat_msg)
+        await asyncio.sleep(.3)
+
+        for thread in forum_channel.threads:
+            if thread.archived:
+                continue
+
+            try:
+                async for msg in thread.history(limit=None):
+                    # Only delete if old enough
+                    if msg.created_at > cutoff:
+                        continue
+
+                    if not msg.content:
+                        continue
+
+                    stat_msg = None
+                    if keyword.lower() in msg.content.lower():
+                        try:
+                            await msg.delete()
+                            stat_msg = (f'[R8TE CLEANUP DETECTOR MESSAGES] Deleted message '
+                                        f'{msg.id} in thread "{thread.name}"')
+                        except discord.Forbidden:
+                            stat_msg = '[R8TE CLEANUP DETECTOR MESSAGES] Missing permissions to delete message.'
+                        except discord.HTTPException:
+                            stat_msg = '[R8TE CLEANUP DETECTOR MESSAGES] Failed to delete due to API error.'
+                    if stat_msg is not None:
+                        await send_ch_msg(CH_LOG, stat_msg)
+                        await asyncio.sleep(.3)
+
+            except Exception as e:
+                stat_msg = f'[R8TE CLEANUP DETECTOR MESSAGES] Error reading thread "{thread.name}": {e}'
+                await send_ch_msg(CH_LOG, stat_msg)
+                await asyncio.sleep(.3)
+
+    cleanup_detector_messages.keyword = "DET RPT"
+    cleanup_detector_messages.days_old = 12
+
+
     @bot.event
     async def on_ready():
         global event_db
@@ -1452,5 +1515,6 @@ def run_discord_bot():
         print(f"{datetime.now()} {bot.user} starting r8te v{VERSION}")
         scan_world_state.start()
         scan_detectors.start()
+        cleanup_detector_messages.start()
 
     bot.run(BOT_TOKEN)
