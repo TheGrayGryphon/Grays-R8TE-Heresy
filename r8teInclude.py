@@ -1,6 +1,6 @@
 import configparser
 
-VERSION = '16Nov25'
+VERSION = '19Nov25'
 CONFIG_FILE = 'r8te.cfg'
 
 
@@ -149,14 +149,15 @@ class Train:
 
 class Player:
 
-    __slots__ = ('discord_id', 'discord_name', 'job_thread', 'train_symbol', 'train_id', 'start_time')
+    __slots__ = ('discord_id', 'discord_name', 'job_thread', 'train_symbol', 'train_id', 'loco_num', 'start_time')
 
-    def __init__(self, discord_id, discord_name, job_thread, train_symbol, train_id, start_time):
+    def __init__(self, discord_id, discord_name, job_thread, train_symbol, train_id, loco_num, start_time):
         self.discord_id = discord_id
         self.discord_name = discord_name
         self.job_thread = job_thread
         self.train_symbol = train_symbol
         self.train_id = train_id
+        self.loco_num = loco_num
         self.start_time = start_time
 
     def __str__(self):

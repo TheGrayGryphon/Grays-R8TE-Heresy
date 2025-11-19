@@ -15,7 +15,6 @@ from r8teInclude import (WORLDSAVE_PATH, AEI_PATH, LOG_FILENAME, AI_ALERT_TIME, 
                          PLAYER_RESPAWN_TIME, RED_SQUARE, RED_EXCLAMATION, GREEN_CIRCLE, AXE, TRACK_AI_DD,
                          JOB_TRACK_FORUM, JOB_POST_FORUM, STATUS_REPORT_TIME, VERSION)
 
-
 from r8teInclude import Car, Cut, Train, Player, AeiReport, CarReport, Job, DeletedTrainWatch
 import shutil
 
@@ -104,9 +103,15 @@ def location(route_id, track_index):
         return route_id
 
 
+def cut_has_loco(cars):
+    for i in range(len(cars.consist)):
+        if cars.consist[i].unit_type == DIESEL_ENGINE:
+            return True
+    return False
+
+
 def update_world_state(last_update_time, world_trains):
     msg = None
-    symbol_list = list()
     try:
         tree = ET.parse(SAVENAME)
         root = tree.getroot()
@@ -119,11 +124,11 @@ def update_world_state(last_update_time, world_trains):
     world_trains.clear()
     world_save_datetime = datetime.strptime(root.find('date').text.split('.')[0], '%Y-%m-%dT%H:%M:%S')
     cuts = parse_train_loader(root)
+    # Walk through each cut of cars and save only those with locomotives in them
     for cut in cuts:
         try:
-            if cut.consist[0].unit_type == DIESEL_ENGINE:  # We are only interested in consists with lead locos
+            if cut_has_loco(cut):
                 tid = cut.train_id
-                tag = cut.consist[0].dest_tag
                 nbr = cut.consist[0].unit_number
                 rp_1 = cut.consist[0].route_1
                 rp_2 = cut.consist[0].route_2
@@ -131,24 +136,21 @@ def update_world_state(last_update_time, world_trains):
                 ts_2 = cut.consist[0].track_2
                 dist_1 = cut.consist[0].dist_1
                 dist_2 = cut.consist[0].dist_2
-                if tag in symbol_list:
-                    if tag != 'None':
-                        pass
-                        #print(f'Duplicate symbol: [{tag}] found while parsing world save')
-                else:
-                    symbol_list.append(tag)
-                if 'amtrak' in cut.consist[0].filename.lower():
-                    train_type = 'Passenger'
-                else:
-                    train_type = 'Freight'
-                if cut.is_ai is True:
-                    eng = 'AI'
-                else:
-                    eng = 'None'
+                eng = 'None'
+                tag = 'NON_LEADER_LOCO'
+                train_type = 'Cut'
+                if cut.consist[0].unit_type == DIESEL_ENGINE:  # Lead loco - grab the symbol
+                    tag = cut.consist[0].dest_tag
+                    if 'amtrak' in cut.consist[0].filename.lower():
+                        train_type = 'Passenger'
+                    else:
+                        train_type = 'Freight'
+                    if cut.is_ai is True:
+                        eng = 'AI'
                 world_trains[tid] = Train(tid, tag, nbr, train_type, len(cut.consist), eng, cut.consist.copy(),
                                           world_save_datetime, rp_1, rp_2, ts_1, ts_2, dist_1, dist_2)
             else:
-                # First car is not a locomotive, so not a valid train
+                # No locomotives found in cut, so not tracking it
                 pass
 
         except IndexError:
@@ -158,27 +160,39 @@ def update_world_state(last_update_time, world_trains):
     return world_save_datetime, msg
 
 
-def find_tid(train_tag, train_list):
+def find_tid_by_symbol(train_tag, train_list):
     for tid in train_list:
         if train_list[tid].symbol.lower() == train_tag.lower():
             return tid
     return -1
 
 
+def find_tid_by_loco_num(loco_num, train_list):
+    for tid in train_list:
+        if train_list[tid].symbol.lower() == loco_num.lower():
+            return tid
+    return -1
+
+
 def train_count(train_type, world_trains, watched_trains):
     count = 0
-    if train_type.lower() == 'ai':
+    if train_type.lower() == 'ai':  # Trains crewed by AI
         for tid in world_trains:
             if world_trains[tid].engineer.lower() == 'ai':
                 count += 1
-    elif train_type.lower() == 'player':
+    elif train_type.lower() == 'player':  # Trains crewed by players
         for tid in world_trains:
-            if world_trains[tid].engineer.lower() != 'none' and world_trains[tid].engineer.lower() != 'ai':
+            if (world_trains[tid].engineer.lower() != 'none' and world_trains[tid].engineer.lower() != 'ai' and
+                    world_trains[tid].symbol != 'NON_LEADER_LOCO'):
                 count += 1
     elif train_type.lower() == 'stuck':
         count = len(watched_trains)
     elif train_type.lower() == 'all':
         count = len(world_trains)
+    elif train_type.lower() == 'cut':
+        for tid in world_trains:
+            if world_trains[tid].symbol == 'NON_LEADER_LOCO':
+                count += 1
     else:
         count = -1
 
@@ -188,7 +202,9 @@ def train_count(train_type, world_trains, watched_trains):
 def player_crew_train(train_set, tid, discord_id, discord_name, thread, add_time):
     if discord_id in players:
         return -1
-    players[discord_id] = Player(discord_id, discord_name, thread, curr_trains[tid].symbol, tid, add_time)
+    loco_num = train_set[tid].lead_num
+    symbol = train_set[tid].symbol
+    players[discord_id] = Player(discord_id, discord_name, thread, symbol, tid, loco_num, add_time)
     if tid not in players:
         train_set[tid].engineer = discord_name
         train_set[tid].discord_id = discord_id
@@ -450,7 +466,7 @@ def run_discord_bot():
         if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
             await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
             # Is it kosher for this function to write straight into the thread?
-            return -1   # Indicate an error occurred
+            return -1  # Indicate an error occurred
         forum_channel = thread.parent
         current_tags = thread.applied_tags or []
 
@@ -465,7 +481,7 @@ def run_discord_bot():
                     if check_tag in current_tags:
                         current_tags.remove(check_tag)
         elif tags_to_remove.lower() == 'all':
-            current_tags.clear()    # Calling code wants to delete all current tags
+            current_tags.clear()  # Calling code wants to delete all current tags
         # Else don't remove any
         for tag in tags_to_add:
             check_tag = discord.utils.find(lambda t: t.name.lower() == tag.lower(), forum_channel.available_tags)
@@ -497,7 +513,7 @@ def run_discord_bot():
         if not isinstance(thread, discord.Thread) or not isinstance(thread.parent, discord.ForumChannel):
             await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
             return
-        await change_thread_tags(ctx, [AVAILABLE_TAG],'ALL')
+        await change_thread_tags(ctx, [AVAILABLE_TAG], 'ALL')
         symbol_msg = 'Train symbol'
         num_msg = 'Lead loco number'
         info_msg = 'Train info'
@@ -522,7 +538,6 @@ def run_discord_bot():
 
     @bot.slash_command(name='staff_help', description="Mark job as needing staff attention")
     @option("note", description="Describe the issue", required=False)
-
     async def staff_help(ctx: discord.ApplicationContext, note: str):
         global last_world_datetime
         global working_jobs
@@ -535,7 +550,7 @@ def run_discord_bot():
             return
         # thread_name = ctx.channel.name
         forum_channel = thread.parent
-        await change_thread_tags(ctx, [STAFF_TAG],'ALL')
+        await change_thread_tags(ctx, [STAFF_TAG], 'ALL')
 
         help_post = f'```ansi\n\u001b[2;31m'
         help_post += f'USER {ctx.author.display_name} HAS MARKED THIS JOB AS NEEDING STAFF ATTENTION'
@@ -552,7 +567,7 @@ def run_discord_bot():
 
     @bot.slash_command(name='player_record', description="Show player how many hours they have logged in total.")
     async def player_record(ctx: discord.ApplicationContext):
-        work_total = query_db_sum(PLAYER_DB_FILENAME,0,ctx.author.id,5)
+        work_total = query_db_sum(PLAYER_DB_FILENAME, 0, ctx.author.id, 5)
         await ctx.respond(f'[r8TE] Effort total for {ctx.author.display_name} is **{work_total}** hours.',
                           ephemeral=True)
 
@@ -577,8 +592,8 @@ def run_discord_bot():
                 await ctx.respond(f'**UNABLE TO CREW** : Train symbol "{symbol}" '
                                   f'found on {nbr_of_symbols} trains.', ephemeral=True)
                 return
-            tid = find_tid(symbol, curr_trains)
-            if tid != -1:   # Train ID found
+            tid = find_tid_by_symbol(symbol, curr_trains)
+            if tid != -1:  # Train ID found
                 if curr_trains[tid].engineer.lower() == 'none':
                     if player_crew_train(curr_trains, tid, ctx.author.id, ctx.author.display_name, thread_id,
                                          last_world_datetime) < 0:
@@ -599,7 +614,7 @@ def run_discord_bot():
                     await thread.send(msg)
                     # Update job ledger; First see if we have already created a ledger entry
                     job_name = None
-                    async for message in thread.history(limit=None):    # Walk through thread looking for ledger entry
+                    async for message in thread.history(limit=None):  # Walk through thread looking for ledger entry
                         if 'JOBID#' in message.content:
                             job_name = message.content.split('JOBID# `')[1].split('`')[0]
                     if job_name:
@@ -640,7 +655,8 @@ def run_discord_bot():
                     await ctx.respond(f'**UNABLE TO CREW, Train {symbol} shows '
                                       f'crewed by {curr_trains[tid].engineer}**', ephemeral=True)
             else:
-                await ctx.respond(f'**UNABLE TO CREW, Train {symbol} not found**', ephemeral=True)
+                await ctx.respond(f'**UNABLE TO CREW**, Train *{symbol}* not found (if you recently changed locomotive '
+                                  f'symbol/tag, please try again in about 2 minutes)', ephemeral=True)
         except discord.Forbidden:
             await ctx.respond('[r8TE] **ERROR** (*crew* command): no permission to edit this thread.', ephemeral=False)
         except Exception as e:
@@ -659,25 +675,27 @@ def run_discord_bot():
             await ctx.respond(f'Attempting to tie down', ephemeral=True)
             if ctx.author.id in players:
                 tid = players[ctx.author.id].train_id
-                orig_engineer = curr_trains[tid].engineer
-                # Clear info from train record
-                curr_trains[tid].engineer = 'none'
-                curr_trains[tid].discord_id = None
-                curr_trains[tid].job_thread = None
+                orig_engineer = ctx.author.id
+                orig_symbol = players[ctx.author.id].train_symbol
+                if tid not in deleted_player_trains:  # Safe to update current train record
+                    # Clear info from train record
+                    curr_trains[tid].engineer = 'None'
+                    curr_trains[tid].discord_id = None
+                    curr_trains[tid].job_thread = None
                 start_time = players[ctx.author.id].start_time
                 del players[ctx.author.id]  # Remove this player record
                 time_worked = round((last_world_datetime - start_time).total_seconds() / 3600, 1)
                 # Check to see if this is a multi-crewed job
                 if len(working_jobs[thread_id].crew) < 2:
                     # Single crew train
-                    msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
-                           f'{curr_trains[tid].symbol} at {location}\nTime worked: {time_worked} hours')
+                    msg = (f'{ctx.author.display_name} tied down train '
+                           f'{orig_symbol} at {location}\nTime worked: {time_worked} hours')
                     del working_jobs[thread_id]
                 else:
                     # Multi-crew train
                     working_jobs[thread_id].crew.remove(ctx.author.display_name)
-                    msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
-                           f'{curr_trains[tid].symbol} at {location}\nTime worked: {time_worked} hours\n'
+                    msg = (f'{ctx.author.display_name} tied down train '
+                           f'{orig_symbol} at {location}\nTime worked: {time_worked} hours\n'
                            f'Job *{working_jobs[thread_id].name}* still being worked by:')
                     for player in working_jobs[thread_id].crew:
                         msg += f' {player},'
@@ -685,7 +703,7 @@ def run_discord_bot():
 
                 if tid in watched_trains:
                     # This train has a watch on it - time to remove, and strike-thru previous alert messages
-                    alert_msg = (f' {GREEN_CIRCLE} {last_world_datetime} **TIED DOWN**: Train {curr_trains[tid].symbol}'
+                    alert_msg = (f' {GREEN_CIRCLE} {last_world_datetime} **TIED DOWN**: Train {orig_symbol}'
                                  f' ({tid}) has been tied down by {orig_engineer}')
                     await strike_alert_msgs(CH_ALERT, tid, alert_msg)
                     await asyncio.sleep(.3)
@@ -742,7 +760,7 @@ def run_discord_bot():
                 # Create database entry
                 job_name = ledger_thread.name.split('|')[1].strip()
                 db_entry = (f'{ctx.author.id},{ctx.author.display_name},TIE_DOWN,{last_world_datetime},'
-                            f'{job_name.replace(","," ")},{time_worked}')
+                            f'{job_name.replace(",", " ")},{time_worked}')
                 write_record(PLAYER_DB_FILENAME, db_entry)
                 await thread.send(msg)
                 await change_thread_tags(ctx, [AVAILABLE_TAG], [CREWED_TAG])
@@ -760,7 +778,6 @@ def run_discord_bot():
 
     @bot.slash_command(name='complete', description=f"Mark a job complete")
     @option('notes', description='completion notes', required=False)
-
     async def complete(ctx: discord.ApplicationContext, notes: str):
         thread = ctx.channel
         thread_id = ctx.channel.id
@@ -773,11 +790,13 @@ def run_discord_bot():
             if ctx.author.id in players:
                 job_complete = False
                 tid = players[ctx.author.id].train_id
-                orig_engineer = curr_trains[tid].engineer
-                # Clear info from train record
-                curr_trains[tid].engineer = 'None'
-                curr_trains[tid].discord_id = None
-                curr_trains[tid].job_thread = None
+                orig_engineer = ctx.author.id
+                orig_symbol = players[ctx.author.id].train_symbol
+                if tid not in deleted_player_trains:  # Safe to update current train record
+                    # Clear info from train record
+                    curr_trains[tid].engineer = 'None'
+                    curr_trains[tid].discord_id = None
+                    curr_trains[tid].job_thread = None
                 start_time = players[ctx.author.id].start_time
                 del players[ctx.author.id]  # Remove this player record
                 time_worked = round((last_world_datetime - start_time).total_seconds() / 3600, 1)
@@ -816,8 +835,7 @@ def run_discord_bot():
                 # Check to see if this is a multi-crewed job, if so we are really just tying down
                 if len(working_jobs[thread_id].crew) < 2:
                     # Single crew train
-                    msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
-                           f'{curr_trains[tid].symbol}, and marked job '
+                    msg = (f'{ctx.author.display_name} tied down train {orig_symbol}, and marked job '
                            f'*{working_jobs[thread_id].name}* `{COMPLETED_TAG}`\nTime worked: {time_worked} hours')
                     embed_msg = discord.Embed(title='CREW RECORD', color=discord.Color.orange())
                     embed_msg.add_field(name='__Employee__', value=str(ctx.author.display_name), inline=False)
@@ -835,7 +853,7 @@ def run_discord_bot():
                     # Create database entry
                     job_name = ledger_thread.name.split('|')[1].strip()
                     db_entry = (f'{ctx.author.id},{ctx.author.display_name},COMPLETE,{last_world_datetime},'
-                                f'{job_name.replace(","," ")},{time_worked}')
+                                f'{job_name.replace(",", " ")},{time_worked}')
                     write_record(PLAYER_DB_FILENAME, db_entry)
                     del working_jobs[thread_id]
                     job_complete = True
@@ -843,9 +861,8 @@ def run_discord_bot():
                 else:
                     # Multi-crew, so tie down instead - no need to change thread tags
                     working_jobs[thread_id].crew.remove(ctx.author.display_name)  # Remove player from job list
-                    msg = (f'{curr_trains[tid].last_time_moved} {ctx.author.display_name} tied down train '
-                           f'{curr_trains[tid].symbol}\nTime worked: {time_worked} hours\n'
-                           f'Job *{working_jobs[thread_id].name}* still being worked by:')
+                    msg = (f'{ctx.author.display_name} tied down train {orig_symbol}\nTime worked: '
+                           f'{time_worked} hours\n Job *{working_jobs[thread_id].name}* still being worked by:')
                     for player in working_jobs[thread_id].crew:
                         msg += f' {player},'
                     msg = msg[:-1]
@@ -868,7 +885,7 @@ def run_discord_bot():
                     # Create database entry
                     job_name = ledger_thread.name.split('|')[1].strip()
                     db_entry = (f'{ctx.author.id},{ctx.author.display_name},TIE_DOWN,{last_world_datetime},'
-                                f'{job_name.replace(","," ")},{time_worked}')
+                                f'{job_name.replace(",", " ")},{time_worked}')
                     write_record(PLAYER_DB_FILENAME, db_entry)
                 if notes:
                     msg += f'\nNotes: {notes}'
@@ -895,14 +912,14 @@ def run_discord_bot():
                         new_message += f'\n{key: <{name_len}}: {round(employee_time, 2)} hours'
                     new_message += f'\n\nTotal time worked on this job: {round(total_time, 2)} hours```'
                     job_num = ledger_thread.name.split('|')[0].strip()
-                    job_entry = f'{job_name.replace(","," ")},{job_num},{last_world_datetime},{round(total_time, 2)}'
+                    job_entry = f'{job_name.replace(",", " ")},{job_num},{last_world_datetime},{round(total_time, 2)}'
                     write_record(JOB_DB_FILENAME, job_entry)
                 await msg_obj.edit(content=new_message)
                 await thread.send(msg)
                 await ledger_thread.send(embed=embed_msg)
                 if tid in watched_trains:
                     # This train has a watch on it - time to remove, and strike-thru previous alert messages
-                    msg = (f' {GREEN_CIRCLE} {last_world_datetime} **POWERED DOWN**: Train {curr_trains[tid].symbol}'
+                    msg = (f' {GREEN_CIRCLE} {last_world_datetime} **POWERED DOWN**: Train {orig_symbol}'
                            f' ({tid}) has been tied down by {orig_engineer}')
                     await strike_alert_msgs(CH_ALERT, tid, msg)
                     await asyncio.sleep(.3)
@@ -950,6 +967,18 @@ def run_discord_bot():
             await strike_alert_msgs(CH_ALERT, tid, msg)
             await asyncio.sleep(.3)
             del watched_trains[tid]  # No longer need to watch
+        return
+
+    @bot.slash_command(name="r8te_clear_job", description="Clear job from queue")
+    @option('player_id', description='Player ID', required=True)
+    async def r8te_clear_job(ctx: discord.ApplicationContext, job_name: str):
+        msg = f'Job {job_name} not found'
+        for job in working_jobs:
+            if working_jobs[job].name == job_name:
+                del working_jobs[job]
+                msg = f'Job "{job_name}" has been cleared'
+                break
+        await ctx.respond(msg, ephemeral=True)
         return
 
     @bot.slash_command(name="r8te_list_trains", description="List trains")
@@ -1070,6 +1099,7 @@ def run_discord_bot():
             msg = (f'{last_world_datetime} **--> r8te ({VERSION}) INITIALIZING NEW WORLD STATE <--** '
                    f'Total number of trains: {train_count("all", curr_trains, watched_trains)} '
                    f'(AI trains: {train_count("ai", curr_trains, watched_trains)},'
+                   f'Mid-cut locos: {train_count("cut", curr_trains, watched_trains)}, '
                    f' player trains: {train_count("player", curr_trains, watched_trains)}) ')
             print(msg)
             await send_ch_msg(CH_LOG, msg)
@@ -1089,17 +1119,19 @@ def run_discord_bot():
             # Look for and archive player trains and capture existing player records
             player_updates = list()
             for player in players.values():
-                player_updates.append([player.discord_id,       # 0
-                                       player.discord_name,     # 1
-                                       player.train_symbol,     # 2
-                                       player.train_id,         # 3
-                                       player.job_thread])      # 4
+                player_updates.append([player.discord_id,  # 0
+                                       player.discord_name,  # 1
+                                       player.train_symbol,  # 2
+                                       player.train_id,  # 3
+                                       player.job_thread,  # 4
+                                       player.loco_num])  # 5
+
             msg += f'...Found {len(player_updates)} players crewing trains.'
             for player in player_updates:
                 msg += f'\n....{player[1]} : {player[2]} [{player[3]}]'
             await send_ch_msg(CH_LOG, msg)
             await asyncio.sleep(.3)
-            players.clear()     # Clear out the players dict; it will be repopulated below
+            players.clear()  # Clear out the players dict; it will be repopulated below
             # Repopulate trains
             last_worlds_save_modified_time = os.stat(SAVENAME).st_mtime  # Time
             last_world_datetime, error_status = update_world_state(last_world_datetime, curr_trains)
@@ -1109,7 +1141,7 @@ def run_discord_bot():
                 await send_ch_msg(CH_LOG, msg)
             # Re-add players
             for player in player_updates:
-                tid = find_tid(player[2], curr_trains)  # Find new TID for previously crewed train
+                tid = find_tid_by_symbol(player[2], curr_trains)  # Find new TID for previously crewed train
                 if tid < 0:  # Can't find this train, so remove crewed status and notify user
                     msg = (f'During server reboot, player train {player[2]}[{player[3]}] not found;'
                            f' removing crew status for player {player[1]}')
@@ -1122,7 +1154,7 @@ def run_discord_bot():
                                    f'Relevant commands: `/r8te_list_trains player` and `/r8te_list_jobs`')
                     forum_thread = await bot.fetch_channel(player[4])
                     try:
-                        del working_jobs[player[4]]     # Remove from job queue
+                        del working_jobs[player[4]]  # Remove from job queue
                     except KeyError:
                         pass
                     await send_ch_msg(forum_thread, player_msg)
@@ -1148,6 +1180,7 @@ def run_discord_bot():
             msg = (f'{last_world_datetime} **--> r8te ({VERSION}) INITIALIZING NEW WORLD STATE <--** '
                    f'Total number of trains: {train_count("all", curr_trains, watched_trains)} '
                    f'(AI trains: {train_count("ai", curr_trains, watched_trains)},'
+                   f'Mid-cut locos: {train_count("cut", curr_trains, watched_trains)}, '
                    f' player trains: {train_count("player", curr_trains, watched_trains)}) ')
             print(msg)
             await send_ch_msg(CH_LOG, msg)
@@ -1202,7 +1235,8 @@ def run_discord_bot():
                             deleted_player_trains[tid] = DeletedTrainWatch(tid, last_world_datetime,
                                                                            last_trains[tid].symbol,
                                                                            deleted_player, deleted_job)
-                            msg = (f'{last_world_datetime} Crewed Train {players[player].train_symbol} was deleted. '
+                            msg = (f'{last_world_datetime} Crewed Train {player}: {players[player].train_symbol} '
+                                   f'missing from latest world save. '
                                    f'Watching to see if it respawns in the next {PLAYER_RESPAWN_TIME} seconds.')
                             await send_ch_msg(CH_LOG, msg)
                             await asyncio.sleep(.3)
@@ -1248,7 +1282,14 @@ def run_discord_bot():
                 del deleted_player_trains[tid]
             # Run through the deleted_player_trains list to determine if any have respawned with same symbol
             for tid in deleted_player_trains:
-                new_tid = find_tid(deleted_player_trains[tid].train_symbol, curr_trains)
+                new_tid = find_tid_by_symbol(deleted_player_trains[tid].train_symbol, curr_trains)
+                if new_tid == 0:
+                    new_tid = find_tid_by_symbol(deleted_player_trains[tid].loco_num, curr_trains)
+                    if new_tid > 0:
+                        msg = (f'Found a new TID based on loco #{deleted_player_trains[tid].loco_num}\n'
+                               f'Old TID: {deleted_player_trains[tid].train_id}, New TID: {new_tid}')
+                        await send_ch_msg(CH_LOG, msg)
+                        await asyncio.sleep(.3)
                 if new_tid > 0:
                     msg = (f'{last_world_datetime} Player crewed train {deleted_player_trains[tid].train_symbol} '
                            f'respawned as TID: {new_tid} (formally {deleted_player_trains[tid].train_id})')
@@ -1258,6 +1299,7 @@ def run_discord_bot():
                     players[deleted_player_trains[tid].discord_id].train_id = new_tid
                     # remove this deleted_player_train entry
                     deleted_train_list.append(tid)
+
             for tid in deleted_train_list:
                 del deleted_player_trains[tid]
 
@@ -1266,7 +1308,7 @@ def run_discord_bot():
             for player in players.values():
                 if not any(deleted.discord_id == player.discord_id for deleted in deleted_player_trains.values()):
                     if player.train_symbol.lower() != curr_trains[player.train_id].symbol.lower():
-                        new_tid = find_tid(player.train_symbol, curr_trains)
+                        new_tid = find_tid_by_symbol(player.train_symbol, curr_trains)
                         if new_tid > 0:
                             msg = f'Player {player.discord_name} train [{player.train_symbol}] has changed ID '
                             msg += f'from {player.train_id} to {new_tid}. Updating player record.'
@@ -1409,8 +1451,8 @@ def run_discord_bot():
             report = parseAEI(last_world_datetime, root)
             detector_reports[report.name].append(report)
             defects = list()
-            if find_tid(report.symbol, curr_trains) > 0:
-                engineer = curr_trains[find_tid(report.symbol, curr_trains)].engineer
+            if find_tid_by_symbol(report.symbol, curr_trains) > 0:
+                engineer = curr_trains[find_tid_by_symbol(report.symbol, curr_trains)].engineer
             else:
                 engineer = "None"
             for unit in report.units:
@@ -1464,7 +1506,7 @@ def run_discord_bot():
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=days_old)
         stat_msg = (f'[R8TE CLEANUP DETECTOR MESSAGES] Scanning {JOB_POST_FORUM} keyword="{keyword}", '
-               f'days_old={days_old}, cutoff={cutoff}')
+                    f'days_old={days_old}, cutoff={cutoff}')
         await send_ch_msg(CH_LOG, stat_msg)
         await asyncio.sleep(.3)
 
@@ -1502,7 +1544,6 @@ def run_discord_bot():
 
     cleanup_detector_messages.keyword = "DET RPT"
     cleanup_detector_messages.days_old = 12
-
 
     @bot.event
     async def on_ready():
