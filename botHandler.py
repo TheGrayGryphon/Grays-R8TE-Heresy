@@ -674,6 +674,11 @@ def run_discord_bot():
         try:
             await ctx.respond(f'Attempting to tie down', ephemeral=True)
             if ctx.author.id in players:
+                if players[ctx.author.id].job_thread != thread_id:
+                    msg = (f'**Unable to tie down** - incorrect job thread. Please execute the `/tie_down` '
+                           f'command in <#{players[ctx.author.id].job_thread}>')
+                    await ctx.respond(msg, ephemeral=True)
+                    return
                 tid = players[ctx.author.id].train_id
                 orig_engineer = ctx.author.id
                 orig_symbol = players[ctx.author.id].train_symbol
@@ -690,6 +695,7 @@ def run_discord_bot():
                     # Single crew train
                     msg = (f'{ctx.author.display_name} tied down train '
                            f'{orig_symbol} at {location}\nTime worked: {time_worked} hours')
+                    await thread.send(msg)
                     del working_jobs[thread_id]
                 else:
                     # Multi-crew train
@@ -786,8 +792,15 @@ def run_discord_bot():
             await ctx.respond('This command must be used inside a job post thread.', ephemeral=True)
             return
         try:
-            await ctx.respond(f'Attempting to mark *{working_jobs[thread_id].name}* as complete.', ephemeral=True)
+            await ctx.respond(f'Attempting to mark *{working_jobs[players[ctx.author.id].job_thread].name}'
+                              f'* as complete.', ephemeral=True)
             if ctx.author.id in players:
+                if ctx.author.id in players:
+                    if players[ctx.author.id].job_thread != thread_id:
+                        msg = (f'**Unable to mark this job complete** - incorrect job thread. Please execute the '
+                               f'`/complete` command in <#{players[ctx.author.id].job_thread}>')
+                        await ctx.respond(msg, ephemeral=True)
+                        return
                 job_complete = False
                 tid = players[ctx.author.id].train_id
                 orig_engineer = ctx.author.id
