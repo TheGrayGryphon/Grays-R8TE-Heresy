@@ -695,7 +695,6 @@ def run_discord_bot():
                     # Single crew train
                     msg = (f'{ctx.author.display_name} tied down train '
                            f'{orig_symbol} at {location}\nTime worked: {time_worked} hours')
-                    await thread.send(msg)
                     del working_jobs[thread_id]
                 else:
                     # Multi-crew train
