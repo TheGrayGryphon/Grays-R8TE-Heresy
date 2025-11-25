@@ -1110,7 +1110,7 @@ def run_discord_bot():
 
             msg = (f'{last_world_datetime} **--> r8te ({VERSION}) INITIALIZING NEW WORLD STATE <--** '
                    f'Total number of trains: {train_count("all", curr_trains, watched_trains)} '
-                   f'(AI trains: {train_count("ai", curr_trains, watched_trains)},'
+                   f'(AI trains: {train_count("ai", curr_trains, watched_trains)}, '
                    f'Mid-cut locos: {train_count("cut", curr_trains, watched_trains)}, '
                    f' player trains: {train_count("player", curr_trains, watched_trains)}) ')
             print(msg)
@@ -1254,14 +1254,27 @@ def run_discord_bot():
                             await asyncio.sleep(.3)
 
             # Run through the deleted_player_trains list to determine if it's really time to nuke them
+            # First determine if the player or job has been removed from their respective lists
+            remove_deleted_train_list = list()
+            for deleted_train in deleted_player_trains:
+                if (deleted_player_trains[deleted_train].discord_id not in players
+                        or deleted_player_trains[deleted_train].job_id not in working_jobs):
+                    remove_deleted_train_list.append(deleted_train)
+                    msg = (f'{last_world_datetime} : Player train {deleted_player_trains[deleted_train].train_symbol} '
+                           f'scheduled for timeout has been removed prematurely due to missing player-crew or job.')
+                    await send_ch_msg(CH_LOG, msg)
+                    await asyncio.sleep(.3)
+            for list_entry in remove_deleted_train_list:
+                del deleted_player_trains[list_entry]
+            # Player and job are intact, so go ahead and check timer
             players_deleted = list()
             jobs_deleted = list()
             player_trains_deleted = list()
             for tid in deleted_player_trains:
                 t_diff = (last_world_datetime - deleted_player_trains[tid].delete_time).total_seconds()
                 msg = (
-                    f'{last_world_datetime} Checking deleted player train queue: {deleted_player_trains[tid].train_symbol} | '
-                    f'{int(t_diff)} / {PLAYER_RESPAWN_TIME}')
+                    f'{last_world_datetime} Checking deleted player train queue: '
+                    f'{deleted_player_trains[tid].train_symbol} | {int(t_diff)} / {PLAYER_RESPAWN_TIME}')
                 await send_ch_msg(CH_LOG, msg)
                 await asyncio.sleep(.3)
                 if t_diff > PLAYER_RESPAWN_TIME:
@@ -1511,13 +1524,14 @@ def run_discord_bot():
                 break
 
         if forum_channel is None:
-            stat_msg = f'[R8TE CLEANUP DETECTOR MESSAGES] : Forum named "{JOB_POST_FORUM}" not found'
+            stat_msg = f'{last_world_datetime} (CLEANUP DETECTOR MESSAGES): Forum named "{JOB_POST_FORUM}" not found'
             await send_ch_msg(CH_LOG, stat_msg)
             await asyncio.sleep(.3)
             return
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=days_old)
-        stat_msg = (f'[R8TE CLEANUP DETECTOR MESSAGES] Scanning {JOB_POST_FORUM} keyword="{keyword}", '
+        stat_msg = (f'{last_world_datetime} (CLEANUP DETECTOR MESSAGES): '
+                    f'Scanning {JOB_POST_FORUM} keyword="{keyword}", '
                     f'days_old={days_old}, cutoff={cutoff}')
         await send_ch_msg(CH_LOG, stat_msg)
         await asyncio.sleep(.3)
@@ -1539,18 +1553,21 @@ def run_discord_bot():
                     if keyword.lower() in msg.content.lower():
                         try:
                             await msg.delete()
-                            stat_msg = (f'[R8TE CLEANUP DETECTOR MESSAGES] Deleted message '
+                            stat_msg = (f'{last_world_datetime} (CLEANUP DETECTOR MESSAGES): Deleted message '
                                         f'{msg.id} in thread "{thread.name}"')
                         except discord.Forbidden:
-                            stat_msg = '[R8TE CLEANUP DETECTOR MESSAGES] Missing permissions to delete message.'
+                            stat_msg = ('{last_world_datetime} (CLEANUP DETECTOR MESSAGES):'
+                                        ' Missing permissions to delete message.')
                         except discord.HTTPException:
-                            stat_msg = '[R8TE CLEANUP DETECTOR MESSAGES] Failed to delete due to API error.'
+                            stat_msg = ('{last_world_datetime} (CLEANUP DETECTOR MESSAGES):'
+                                        ' Failed to delete due to API error.')
                     if stat_msg is not None:
                         await send_ch_msg(CH_LOG, stat_msg)
                         await asyncio.sleep(.3)
 
             except Exception as e:
-                stat_msg = f'[R8TE CLEANUP DETECTOR MESSAGES] Error reading thread "{thread.name}": {e}'
+                stat_msg = (f'{last_world_datetime} (CLEANUP DETECTOR MESSAGES):'
+                            f' Error reading thread "{thread.name}": {e}')
                 await send_ch_msg(CH_LOG, stat_msg)
                 await asyncio.sleep(.3)
 
