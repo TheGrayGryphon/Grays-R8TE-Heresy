@@ -1,6 +1,6 @@
 import configparser
 
-VERSION = '24Nov25'
+VERSION = '20Dec25'
 CONFIG_FILE = 'r8te.cfg'
 
 
