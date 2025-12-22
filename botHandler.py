@@ -1326,48 +1326,51 @@ def run_discord_bot():
                 del deleted_player_trains[tid]
             # Run through the deleted_player_trains list to determine if any have respawned with same symbol
             for tid in deleted_player_trains:
-                new_tid = find_tid_by_symbol(deleted_player_trains[tid].train_symbol, curr_trains)
-                if new_tid == 0:
-                    new_tid = find_tid_by_symbol(deleted_player_trains[tid].loco_num, curr_trains)
+                if tid not in deleted_train_list:
+                    new_tid = find_tid_by_symbol(deleted_player_trains[tid].train_symbol, curr_trains)
+                    if new_tid == 0:
+                        new_tid = find_tid_by_loco_num(deleted_player_trains[tid].loco_num, curr_trains)
+                        if new_tid > 0:
+                            msg = (f'Found a new TID based on loco #{deleted_player_trains[tid].loco_num}\n'
+                                   f'Old TID: {deleted_player_trains[tid].train_id}, New TID: {new_tid}')
+                            await send_ch_msg(CH_LOG, msg)
+                            await asyncio.sleep(.3)
                     if new_tid > 0:
-                        msg = (f'Found a new TID based on loco #{deleted_player_trains[tid].loco_num}\n'
-                               f'Old TID: {deleted_player_trains[tid].train_id}, New TID: {new_tid}')
+                        msg = (f'{last_world_datetime} Crewed train {deleted_player_trains[tid].train_symbol} '
+                               f'respawned as TID: {new_tid} (formally {deleted_player_trains[tid].train_id})')
                         await send_ch_msg(CH_LOG, msg)
                         await asyncio.sleep(.3)
-                if new_tid > 0:
-                    msg = (f'{last_world_datetime} Crewed train {deleted_player_trains[tid].train_symbol} '
-                           f'respawned as TID: {new_tid} (formally {deleted_player_trains[tid].train_id})')
-                    await send_ch_msg(CH_LOG, msg)
-                    await asyncio.sleep(.3)
-                    # Adjust the tid for the player crewed entry
-                    players[deleted_player_trains[tid].discord_id].train_id = new_tid
-                    # remove this deleted_player_train entry
-                    deleted_train_list.append(tid)
+                        # Adjust the tid for the player crewed entry
+                        players[deleted_player_trains[tid].discord_id].train_id = new_tid
+                        # remove this deleted_player_train entry
+                        deleted_train_list.append(tid)
 
             # Run through the deleted_player_trains list to determine if they put the lead into another consist
             for tid in deleted_player_trains:
-                new_tid = find_symbol_in_consist(deleted_player_trains[tid].train_symbol, curr_trains)
-                if new_tid:
-                    msg_player = 'Unknown'
-                    for player in players:
-                        if players[player].train_id == tid:
-                            msg_player = players[player].discord_name
-                    msg_orig_sym = deleted_player_trains[tid].train_symbol
-                    msg_new_tid = new_tid[0]
-                    msg_orig_pos = new_tid[1]
-                    msg_new_sym = curr_trains[new_tid[0]].symbol
-                    msg = (f'{last_world_datetime} Crewed train {msg_orig_sym} [{msg_player}] '
-                           f'has been found on {msg_new_sym} [{msg_new_tid}] at position {msg_orig_pos}. Removing from '
-                           f'deleted train watch queue.')
-                    await send_ch_msg(CH_LOG, msg)
-                    await asyncio.sleep(.3)
-                    # Adjust the tid for the player crewed entry
-                    players[deleted_player_trains[tid].discord_id].train_id = new_tid[0]
-                    # remove this deleted_player_train entry
-                    deleted_train_list.append(tid)
+                if tid not in deleted_train_list:
+                    new_tid = find_symbol_in_consist(deleted_player_trains[tid].train_symbol, curr_trains)
+                    if new_tid:
+                        msg_player = 'Unknown'
+                        for player in players:
+                            if players[player].train_id == tid:
+                                msg_player = players[player].discord_name
+                        msg_orig_sym = deleted_player_trains[tid].train_symbol
+                        msg_new_tid = new_tid[0]
+                        msg_orig_pos = new_tid[1]
+                        msg_new_sym = curr_trains[new_tid[0]].symbol
+                        msg = (f'{last_world_datetime} Crewed train {msg_orig_sym} [{msg_player}] '
+                               f'has been found on {msg_new_sym} [{msg_new_tid}] at position {msg_orig_pos}. Removing from '
+                               f'deleted train watch queue.')
+                        await send_ch_msg(CH_LOG, msg)
+                        await asyncio.sleep(.3)
+                        # Adjust the tid for the player crewed entry
+                        players[deleted_player_trains[tid].discord_id].train_id = new_tid[0]
+                        # remove this deleted_player_train entry
+                        deleted_train_list.append(tid)
 
             for tid in deleted_train_list:
                 del deleted_player_trains[tid]
+            deleted_train_list.clear()
 
             # Run through each player record and check that the symbol to tid correspondence hasn't changed
             # Also, populate player / job info on new train dict
