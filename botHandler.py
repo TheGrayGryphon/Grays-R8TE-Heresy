@@ -650,10 +650,12 @@ def run_discord_bot():
                         ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_FORUM)
                         job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
                         job_id += f' | {thread_name}'
-                        content = f'Job Title: {thread_name}\n Link: <#{thread.id}>\n\n'
-                        content += f'```---- Effort ledger ----```'
+                        ledger_embed = discord.Embed(title='Job Effort Ledger', color=discord.Color.blue())
+                        ledger_embed.add_field(name='Job Title', value=thread_name, inline=False)
+                        ledger_embed.add_field(name='Link', value=f'<#{thread.id}>', inline=False)
+                        ledger_embed.description = f'```---- Effort ledger ----```'
                         ledger_thread = await ledger_channel.create_thread(name=job_id,
-                                                                           content=content)
+                                                                           embed=ledger_embed)
                         no_job_msg = (f'[r8TE JOB ADMIN] {last_world_datetime} '
                                       f'NEW LEDGER JOBID# `{job_id}`   <#{ledger_thread.id}>')
                         await thread.send(no_job_msg)
@@ -665,10 +667,21 @@ def run_discord_bot():
                     # Edit summary at top of thread
                     first_msg = await ledger_thread.history(limit=1, oldest_first=True).flatten()
                     msg_obj = first_msg[0]
-                    new_content = (msg_obj.content[:-3] +
-                                   f'\n{ctx.author.display_name} | CLOCK_IN | {last_world_datetime} | 0.0```')
-                    new_message = prettify(new_content)
-                    await msg_obj.edit(content=new_message)
+                    # Check if this is a new embed-based ledger or old text-based ledger
+                    if msg_obj.embeds:
+                        # New embed format
+                        ledger_embed = msg_obj.embeds[0]
+                        new_content = (ledger_embed.description[:-3] +
+                                       f'\n{ctx.author.display_name} | CLOCK_IN | {last_world_datetime.strftime("%m/%d/%y %H:%M")} | 0.0```')
+                        new_message = prettify(new_content)
+                        ledger_embed.description = new_message
+                        await msg_obj.edit(embed=ledger_embed)
+                    else:
+                        # Old plain text format
+                        new_content = (msg_obj.content[:-3] +
+                                       f'\n{ctx.author.display_name} | CLOCK_IN | {last_world_datetime.strftime("%m/%d/%y %H:%M")} | 0.0```')
+                        new_message = prettify(new_content)
+                        await msg_obj.edit(content=new_message)
 
                 else:
                     await ctx.respond(f'**UNABLE TO CREW, Train {symbol} shows '
@@ -751,10 +764,12 @@ def run_discord_bot():
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_FORUM)
                     job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
                     job_id += f' | {thread_name}'
-                    content = f'Job Title: {thread_name}\n Link: <#{thread.id}>\n\n'
-                    content += f'```---- Effort ledger ----```'
+                    ledger_embed = discord.Embed(title='Job Effort Ledger', color=discord.Color.blue())
+                    ledger_embed.add_field(name='Job Title', value=thread_name, inline=False)
+                    ledger_embed.add_field(name='Link', value=f'<#{thread.id}>', inline=False)
+                    ledger_embed.description = f'```---- Effort ledger ----```'
                     ledger_thread = await ledger_channel.create_thread(name=job_id,
-                                                                       content=content)
+                                                                       embed=ledger_embed)
                     no_job_msg = (f'[r8TE JOB ADMIN] {last_world_datetime} '
                                   f'NEW LEDGER JOBID# `{job_id}`   <#{ledger_thread.id}>')
                     await thread.send(no_job_msg)
@@ -768,13 +783,24 @@ def run_discord_bot():
                 # Edit summary at top of thread
                 first_msg = await ledger_thread.history(limit=1, oldest_first=True).flatten()
                 msg_obj = first_msg[0]
-                new_content = (msg_obj.content[:-3] +
-                               f'\n{ctx.author.display_name} | CLOCK_OUT | {last_world_datetime} | {time_worked}```')
-                new_message = prettify(new_content)
-                await msg_obj.edit(content=new_message)
+                # Check if this is a new embed-based ledger or old text-based ledger
+                if msg_obj.embeds:
+                    # New embed format
+                    ledger_embed = msg_obj.embeds[0]
+                    new_content = (ledger_embed.description[:-3] +
+                                   f'\n{ctx.author.display_name} | CLOCK_OUT | {last_world_datetime.strftime("%m/%d/%y %H:%M")} | {time_worked}```')
+                    new_message = prettify(new_content)
+                    ledger_embed.description = new_message
+                    await msg_obj.edit(embed=ledger_embed)
+                else:
+                    # Old plain text format
+                    new_content = (msg_obj.content[:-3] +
+                                   f'\n{ctx.author.display_name} | CLOCK_OUT | {last_world_datetime.strftime("%m/%d/%y %H:%M")} | {time_worked}```')
+                    new_message = prettify(new_content)
+                    await msg_obj.edit(content=new_message)
                 # Give summary of hours player has worked
                 employee = defaultdict(list)
-                logs = new_content.split('```')[1].split('\n')  # Get the summary section
+                logs = new_message.split('```')[1].split('\n')  # Get the summary section
                 for i in range(1, len(logs)):  # Create dict with work logs keyed on player name with list of hours
                     employee[logs[i].split('|')[0].strip().lower()].append(float(logs[i].split('|')[3].strip()))
                 total = 0
@@ -855,10 +881,12 @@ def run_discord_bot():
                     ledger_channel = discord.utils.get(ctx.guild.channels, name=JOB_TRACK_FORUM)
                     job_id = datetime.now().strftime('%y%m%d-%H%M%S') + datetime.now().strftime('%f')[:2]
                     job_id += f' | {thread_name}'
-                    content = f'Job Title: {thread_name}\n Link: <#{thread.id}>\n\n'
-                    content += f'```---- Effort ledger ----```'
+                    ledger_embed = discord.Embed(title='Job Effort Ledger', color=discord.Color.blue())
+                    ledger_embed.add_field(name='Job Title', value=thread_name, inline=False)
+                    ledger_embed.add_field(name='Link', value=f'<#{thread.id}>', inline=False)
+                    ledger_embed.description = f'```---- Effort ledger ----```'
                     ledger_thread = await ledger_channel.create_thread(name=job_id,
-                                                                       content=content)
+                                                                       embed=ledger_embed)
                     no_job_msg = (f'[r8TE JOB ADMIN] {last_world_datetime} '
                                   f'NEW LEDGER JOBID# `{job_id}`   <#{ledger_thread.id}>')
                     await thread.send(no_job_msg)
@@ -878,9 +906,19 @@ def run_discord_bot():
                     # Edit summary at top of thread
                     first_msg = await ledger_thread.history(limit=1, oldest_first=True).flatten()
                     msg_obj = first_msg[0]
-                    new_content = (msg_obj.content[:-3] +
-                                   f'\n{ctx.author.display_name} | CLOCK_OUT | '
-                                   f'{last_world_datetime} | {time_worked}```')
+                    ledger_embed = None
+                    # Check if this is a new embed-based ledger or old text-based ledger
+                    if msg_obj.embeds:
+                        # New embed format
+                        ledger_embed = msg_obj.embeds[0]
+                        new_content = (ledger_embed.description[:-3] +
+                                       f'\n{ctx.author.display_name} | CLOCK_OUT | '
+                                       f'{last_world_datetime.strftime("%m/%d/%y %H:%M")} | {time_worked}```')
+                    else:
+                        # Old plain text format
+                        new_content = (msg_obj.content[:-3] +
+                                       f'\n{ctx.author.display_name} | CLOCK_OUT | '
+                                       f'{last_world_datetime.strftime("%m/%d/%y %H:%M")} | {time_worked}```')
                     # Create database entry
                     job_name = ledger_thread.name.split('|')[1].strip()
                     db_entry = (f'{ctx.author.id},{ctx.author.display_name},COMPLETE,{last_world_datetime},'
@@ -910,9 +948,19 @@ def run_discord_bot():
                     # Edit summary at top of thread
                     first_msg = await ledger_thread.history(limit=1, oldest_first=True).flatten()
                     msg_obj = first_msg[0]
-                    new_content = (msg_obj.content[:-3] +
-                                   f'\n{ctx.author.display_name} | CLOCK_OUT | '
-                                   f'{last_world_datetime} | {time_worked}```')
+                    ledger_embed = None
+                    # Check if this is a new embed-based ledger or old text-based ledger
+                    if msg_obj.embeds:
+                        # New embed format
+                        ledger_embed = msg_obj.embeds[0]
+                        new_content = (ledger_embed.description[:-3] +
+                                       f'\n{ctx.author.display_name} | CLOCK_OUT | '
+                                       f'{last_world_datetime.strftime("%m/%d/%y %H:%M")} | {time_worked}```')
+                    else:
+                        # Old plain text format
+                        new_content = (msg_obj.content[:-3] +
+                                       f'\n{ctx.author.display_name} | CLOCK_OUT | '
+                                       f'{last_world_datetime.strftime("%m/%d/%y %H:%M")} | {time_worked}```')
                     # Create database entry
                     job_name = ledger_thread.name.split('|')[1].strip()
                     db_entry = (f'{ctx.author.id},{ctx.author.display_name},TIE_DOWN,{last_world_datetime},'
@@ -945,7 +993,14 @@ def run_discord_bot():
                     job_num = ledger_thread.name.split('|')[0].strip()
                     job_entry = f'{job_name.replace(",", " ")},{job_num},{last_world_datetime},{round(total_time, 2)}'
                     write_record(JOB_DB_FILENAME, job_entry)
-                await msg_obj.edit(content=new_message)
+                # Edit the ledger message with the updated content
+                if ledger_embed is not None:
+                    # New embed format
+                    ledger_embed.description = new_message
+                    await msg_obj.edit(embed=ledger_embed)
+                else:
+                    # Old plain text format
+                    await msg_obj.edit(content=new_message)
                 await thread.send(msg)
                 await ledger_thread.send(embed=embed_msg)
                 if tid in watched_trains:
