@@ -1059,7 +1059,7 @@ def run_discord_bot():
     @option('player_id', description='Player ID', required=True)
     async def r8te_clear_job(ctx: discord.ApplicationContext, job_name: str):
         msg = f'Job {job_name} not found'
-        for job in working_jobs:
+        for job in list(working_jobs):
             if working_jobs[job].name == job_name:
                 del working_jobs[job]
                 msg = f'Job "{job_name}" has been cleared'
@@ -1072,7 +1072,7 @@ def run_discord_bot():
     async def r8te_list_trains(ctx: discord.ApplicationContext, list_type: str):
         msg = ''
         if list_type.lower() == 'player':
-            for player in players:
+            for player in list(players):
                 tid = players[player].train_id
                 if players[player].train_symbol != curr_trains[tid].symbol:
                     msg += (f'{players[player].discord_name} :'
@@ -1310,11 +1310,11 @@ def run_discord_bot():
                     # Check if deleted train is in the player list
                     # Here we want to note the time the train was deleted. Another section of code will handle the
                     #  actual deletion of the player and job record after a timeout.
-                    for player in players:
+                    for player in list(players):
                         if players[player].train_id == tid:
                             deleted_player = player
                             deleted_job = None
-                            for job in working_jobs:
+                            for job in list(working_jobs):
                                 for name in working_jobs[job].crew:
                                     if name == players[player].discord_name:
                                         deleted_job = job
@@ -1352,11 +1352,11 @@ def run_discord_bot():
                 await send_ch_msg(CH_LOG, msg)
                 await asyncio.sleep(.3)
                 if t_diff > PLAYER_RESPAWN_TIME:
-                    for player in players:
+                    for player in list(players):
                         if players[player].train_id == tid:
                             players_deleted.append(player)
                             # Find job associated with this player
-                            for job in working_jobs:
+                            for job in list(working_jobs):
                                 for name in working_jobs[job].crew:
                                     if name == players[player].discord_name:
                                         working_jobs[job].crew.remove(name)
@@ -1406,7 +1406,7 @@ def run_discord_bot():
                     new_tid = find_symbol_in_consist(deleted_player_trains[tid].train_symbol, curr_trains)
                     if new_tid:
                         msg_player = 'Unknown'
-                        for player in players:
+                        for player in list(players):
                             if players[player].train_id == tid:
                                 msg_player = players[player].discord_name
                         msg_orig_sym = deleted_player_trains[tid].train_symbol
