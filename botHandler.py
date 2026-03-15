@@ -706,11 +706,20 @@ def run_discord_bot():
             if not line:
                 continue
 
+            if line.startswith('- '):
+                parsed_entry = line[2:].strip()
+                if parsed_entry and parsed_entry not in chronological_entries:
+                    chronological_entries.append(parsed_entry)
+                continue
+
             lower_line = line.lower()
             if lower_line.startswith('mark available:'):
                 parsed_value = line.split(':', 1)[1].strip()
                 if not mark_available_info and parsed_value:
                     mark_available_info = parsed_value
+                mark_entry = f'Mark Available | {parsed_value}'
+                if parsed_value and mark_entry not in chronological_entries:
+                    chronological_entries.append(mark_entry)
                 in_chronological = False
                 continue
 
@@ -722,13 +731,10 @@ def run_discord_bot():
                 parsed_value = line.split(':', 1)[1].strip()
                 if not completion_entry and parsed_value:
                     completion_entry = parsed_value
+                if parsed_value and parsed_value not in chronological_entries:
+                    chronological_entries.append(parsed_value)
                 in_chronological = False
                 continue
-
-            if in_chronological and line.startswith('- '):
-                parsed_entry = line[2:].strip()
-                if parsed_entry and parsed_entry not in chronological_entries:
-                    chronological_entries.append(parsed_entry)
 
         return mark_available_info, completion_entry
 
@@ -742,9 +748,14 @@ def run_discord_bot():
 
             if msg.author.id == bot.user.id:
                 summary_attachments_loaded = False
-                if mark_available_info is None and msg.content:
+                if msg.content:
                     if 'Lead loco number' in msg.content and 'Departure location' in msg.content:
-                        mark_available_info = parse_mark_available_content(msg.content)
+                        parsed_mark_available = parse_mark_available_content(msg.content)
+                        if parsed_mark_available:
+                            if mark_available_info is None:
+                                mark_available_info = parsed_mark_available
+                            chronological_entries.append(
+                                f'{msg_time} | Mark Available | {parsed_mark_available}')
 
                 for embed in msg.embeds:
                     if embed.footer and embed.footer.text and 'R8TE_SUMMARY' in embed.footer.text:
@@ -794,6 +805,7 @@ def run_discord_bot():
                                             f'| Train: {train_name}')
                         if notes:
                             completion_entry += f' | Notes: {remove_at_mentions(notes)}'
+                        chronological_entries.append(completion_entry)
             else:
                 user_content = msg.clean_content.strip() if msg.clean_content else ''
                 if len(user_content) < 1 and msg.attachments:
@@ -808,16 +820,13 @@ def run_discord_bot():
         if not mark_available_info:
             mark_available_info = f'Job: {thread.name}'
 
-        description_lines = [f'Mark Available: {mark_available_info}']
+        if completion_entry and completion_entry not in chronological_entries:
+            chronological_entries.append(completion_entry)
+
+        description_lines = [f'Job: {thread.name}']
         if len(chronological_entries) > 0:
-            description_lines.append('')
-            description_lines.append('Chronological:')
             for entry in chronological_entries:
                 description_lines.append(f'- {entry}')
-
-        if completion_entry:
-            description_lines.append('')
-            description_lines.append(f'Complete: {completion_entry}')
 
         return '\n'.join(description_lines)
 
@@ -834,6 +843,9 @@ def run_discord_bot():
                 continue
 
             delete_candidates.append(msg)
+
+            if first_message_id is not None and msg.id == first_message_id:
+                continue
 
             source_messages.append(msg)
 
